@@ -99,11 +99,19 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
   }, [bytes])
 
   // ----- fit-to-width scale ------------------------------------------------
+  // Measured once per file load, NOT continuously. The browser's own zoom
+  // (Ctrl +/-) reports a bigger CSS-pixel width for this container when you
+  // zoom out — if we kept re-fitting to that, the page would rescale right
+  // back up to fill it, canceling out the browser's zoom entirely. Freezing
+  // this after the first measurement lets native browser zoom shrink/grow
+  // the page like any normal web content. The "reset zoom" button below
+  // re-measures on demand, for when the window itself was actually resized.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const observer = new ResizeObserver((entries) => {
       setContainerWidth(entries[0].contentRect.width)
+      observer.disconnect()
     })
     observer.observe(el)
     return () => observer.disconnect()
@@ -117,7 +125,17 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
   }, [loaded, containerWidth, zoom])
 
   const handleZoom = useCallback((factor: number) => {
-    setZoom((z) => (factor === 0 ? 1 : clamp(z * factor, 0.4, 3)))
+    if (factor === 0) {
+      // Re-measure in case the window was actually resized since load.
+      const el = scrollRef.current
+      if (el) setContainerWidth(el.getBoundingClientRect().width)
+      setZoom(1)
+      return
+    }
+    // Floor was 0.4 — reached after only ~5 clicks, after which "Zoom out"
+    // silently did nothing. Lowered so it keeps shrinking like a normal PDF
+    // viewer's zoom-out.
+    setZoom((z) => clamp(z * factor, 0.1, 3))
   }, [])
 
   // ----- keyboard shortcuts -------------------------------------------------

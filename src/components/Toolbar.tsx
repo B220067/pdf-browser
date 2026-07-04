@@ -130,7 +130,7 @@ export function Toolbar({
           <button
             type="button"
             title="Zoom out"
-            onClick={() => onZoom(1 / 1.2)}
+            onClick={() => onZoom(1 / 1.4)}
             className="rounded-md p-2 text-slate-600 hover:bg-white hover:shadow-sm"
           >
             <MinusIcon width={20} height={20} />
@@ -146,7 +146,7 @@ export function Toolbar({
           <button
             type="button"
             title="Zoom in"
-            onClick={() => onZoom(1.2)}
+            onClick={() => onZoom(1.4)}
             className="rounded-md p-2 text-slate-600 hover:bg-white hover:shadow-sm"
           >
             <PlusIcon width={20} height={20} />
