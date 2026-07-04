@@ -14,8 +14,14 @@ interface TextBoxItemProps {
   dispatch: Dispatch<EditorAction>
 }
 
-/** Visual padding (screen px) around the textarea that doubles as the drag zone. */
-const DRAG_RING = 8
+/**
+ * Visual padding (screen px) around the textarea that doubles as the drag
+ * zone. Needs to be wide enough for a finger, not just a mouse cursor — an
+ * 8px ring is unreachable by touch (a finger reliably lands on the textarea
+ * instead, which intentionally excludes itself from dragging so normal text
+ * cursor placement still works).
+ */
+const DRAG_RING = 18
 
 export function TextBoxItem({ el, geometry, scale, selected, dispatch }: TextBoxItemProps) {
   const areaRef = useRef<HTMLTextAreaElement>(null)
@@ -99,7 +105,10 @@ export function TextBoxItem({ el, geometry, scale, selected, dispatch }: TextBox
 
   return (
     <div
-      className="absolute z-10"
+      // touch-none: without it, dragging a text box on a touchscreen gets
+      // read as a page-scroll gesture instead of a move — preventDefault()
+      // on the pointer event alone doesn't stop that on mobile.
+      className="absolute z-10 touch-none"
       style={{ left: el.x * scale - DRAG_RING, top: el.y * scale - DRAG_RING }}
       onPointerDown={startDrag}
       onPointerMove={moveDrag}
@@ -113,13 +122,13 @@ export function TextBoxItem({ el, geometry, scale, selected, dispatch }: TextBox
         >
           <span
             title="Drag to move"
-            className="cursor-move rounded p-1 text-slate-400 hover:text-white"
+            className="touch-none cursor-move rounded p-2 text-slate-400 hover:text-white"
             onPointerDown={(e) => {
               e.stopPropagation()
               startDragFromGrip(e)
             }}
           >
-            <GripIcon />
+            <GripIcon width={20} height={20} />
           </span>
           <select
             value={el.fontFamily}

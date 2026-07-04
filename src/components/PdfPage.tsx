@@ -100,6 +100,12 @@ export function PdfPage({ page, geometry, scale, state, dispatch }: PdfPageProps
         data-page={geometry.pageIndex}
         className={`relative bg-white shadow-md ring-1 ring-black/10 ${
           state.tool === 'text' ? 'cursor-text' : ''
+        } ${
+          // touch-action on the <svg> ink layer alone isn't reliably honored
+          // on all mobile browsers (notably Safari) — setting it here too,
+          // on an ancestor <div>, is what actually stops the page from
+          // scrolling out from under a touch-drawn or touch-erased stroke.
+          state.tool === 'draw' || state.tool === 'erase' ? 'touch-none' : ''
         }`}
         style={{ width: geometry.width * scale, height: geometry.height * scale }}
         onPointerDown={handlePagePointerDown}
