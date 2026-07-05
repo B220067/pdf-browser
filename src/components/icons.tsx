@@ -54,6 +54,27 @@ export const UndoIcon = (p: IconProps) => (
   </svg>
 )
 
+export const RedoIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M21 7v6h-6" />
+    <path d="M3 17a9 9 0 0115-6.7L21 13" />
+  </svg>
+)
+
+export const RotateIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M21 3v6h-6" />
+    <path d="M21 9a9 9 0 10.5 4" />
+  </svg>
+)
+
+export const SignatureIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 17c2-4 3.5-6 5-6s1.5 3 3 3 2.5-5 4-5 1 4 2.5 4 1.5-2 2.5-2" />
+    <path d="M3 20h18" strokeOpacity={0.4} />
+  </svg>
+)
+
 export const DownloadIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />

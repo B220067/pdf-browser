@@ -30,10 +30,43 @@ export function displayedToPdf(pt: Point, g: PageGeometry): Point {
   }
 }
 
+/** Exact inverse of displayedToPdf: structural PDF point → displayed page space. */
+export function pdfToDisplayed(pt: Point, g: PageGeometry): Point {
+  const { viewX: vx, viewY: vy, viewWidth: vw, viewHeight: vh } = g
+  switch (g.rotation) {
+    case 90:
+      return { x: pt.y - vy, y: pt.x - vx }
+    case 180:
+      return { x: vw - (pt.x - vx), y: pt.y - vy }
+    case 270:
+      return { x: vh - (pt.y - vy), y: vw - (pt.x - vx) }
+    default:
+      return { x: pt.x - vx, y: vh - (pt.y - vy) }
+  }
+}
+
 /** Normalize an arbitrary /Rotate value (may be negative or >360) to 0|90|180|270. */
 export function normalizeRotation(rotate: number): 0 | 90 | 180 | 270 {
   const r = ((Math.round(rotate / 90) * 90) % 360 + 360) % 360
   return r as 0 | 90 | 180 | 270
+}
+
+/**
+ * The geometry a page presents AFTER an extra user-applied rotation delta.
+ * The crop box lives in unrotated structural space so it never changes;
+ * only the effective rotation (and therefore the displayed width/height
+ * orientation) does. All display, interaction, and save math then treats
+ * the rotated page exactly like a page whose /Rotate was this all along.
+ */
+export function effectiveGeometry(base: PageGeometry, delta: 0 | 90 | 180 | 270): PageGeometry {
+  if (delta === 0) return base
+  const swap = delta === 90 || delta === 270
+  return {
+    ...base,
+    rotation: normalizeRotation(base.rotation + delta),
+    width: swap ? base.height : base.width,
+    height: swap ? base.width : base.height,
+  }
 }
 
 /** Convert a pointer event's client coordinates into displayed page space. */

@@ -1,6 +1,7 @@
 import type { Dispatch } from 'react'
-import type { EditorAction } from '../lib/editorState'
+import type { HistoryAction } from '../lib/editorState'
 import type { Tool } from '../types'
+import { ColorSwatches } from './ColorSwatches'
 import {
   CloseIcon,
   CursorIcon,
@@ -9,6 +10,8 @@ import {
   MinusIcon,
   PenIcon,
   PlusIcon,
+  RedoIcon,
+  SignatureIcon,
   TypeIcon,
   UndoIcon,
 } from './icons'
@@ -18,13 +21,17 @@ interface ToolbarProps {
   tool: Tool
   penColor: string
   penWidth: number
-  canUndoStroke: boolean
+  canUndo: boolean
+  canRedo: boolean
+  hasSavedSignature: boolean
   zoom: number
   saving: boolean
-  dispatch: Dispatch<EditorAction>
+  dispatch: Dispatch<HistoryAction>
   onZoom: (factor: number) => void
   onDownload: () => void
   onClose: () => void
+  onSignatureClick: () => void
+  onRedrawSignature: () => void
 }
 
 const TOOLS: { tool: Tool; label: string; shortcut: string; Icon: typeof CursorIcon }[] = [
@@ -41,13 +48,17 @@ export function Toolbar({
   tool,
   penColor,
   penWidth,
-  canUndoStroke,
+  canUndo,
+  canRedo,
+  hasSavedSignature,
   zoom,
   saving,
   dispatch,
   onZoom,
   onDownload,
   onClose,
+  onSignatureClick,
+  onRedrawSignature,
 }: ToolbarProps) {
   return (
     <header className="z-30 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
@@ -80,18 +91,44 @@ export function Toolbar({
         ))}
       </div>
 
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          title={hasSavedSignature ? 'Stamp your saved signature' : 'Draw a signature to reuse'}
+          aria-pressed={tool === 'stamp'}
+          onClick={onSignatureClick}
+          className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-base font-medium transition-colors ${
+            tool === 'stamp'
+              ? 'bg-sky-100 text-sky-700'
+              : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <SignatureIcon width={22} height={22} />
+          <span className="hidden sm:inline">Signature</span>
+        </button>
+        {hasSavedSignature && (
+          <button
+            type="button"
+            title="Draw a new signature to replace the saved one"
+            onClick={onRedrawSignature}
+            className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-900"
+          >
+            <PenIcon width={16} height={16} />
+            Redraw
+          </button>
+        )}
+      </div>
+
       {(tool === 'draw' || tool === 'erase') && (
         <div className="flex items-center gap-3 rounded-lg bg-slate-100 px-3 py-2">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
             Color
-            <input
-              type="color"
+            <ColorSwatches
               value={penColor}
-              onChange={(e) => dispatch({ type: 'SET_PEN', color: e.target.value })}
-              className="h-8 w-9 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
-              aria-label="Pen color"
+              onChange={(color) => dispatch({ type: 'SET_PEN', color })}
+              ariaLabel="Pen color"
             />
-          </label>
+          </div>
           <div className="flex items-center gap-1.5" role="radiogroup" aria-label="Pen width">
             {PEN_WIDTHS.map((w) => (
               <button
@@ -106,8 +143,12 @@ export function Toolbar({
                 }`}
               >
                 <span
+                  // A pure w*1.8 scale floors both 1pt (1.8px) and 2pt
+                  // (3.6px) to the same 4px minimum, making the two smallest
+                  // sizes look identical. Adding a flat offset keeps every
+                  // step visibly distinct while still scaling with width.
                   className="rounded-full bg-slate-700"
-                  style={{ width: Math.max(w * 1.8, 4), height: Math.max(w * 1.8, 4) }}
+                  style={{ width: w * 2 + 3, height: w * 2 + 3 }}
                 />
               </button>
             ))}
@@ -118,12 +159,21 @@ export function Toolbar({
       <div className="ml-auto flex items-center gap-3">
         <button
           type="button"
-          title="Undo last stroke (Ctrl+Z)"
-          disabled={!canUndoStroke}
-          onClick={() => dispatch({ type: 'UNDO_STROKE' })}
+          title="Undo (Ctrl+Z)"
+          disabled={!canUndo}
+          onClick={() => dispatch({ type: 'UNDO' })}
           className="rounded-md p-2.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30"
         >
           <UndoIcon width={22} height={22} />
+        </button>
+        <button
+          type="button"
+          title="Redo (Ctrl+Shift+Z)"
+          disabled={!canRedo}
+          onClick={() => dispatch({ type: 'REDO' })}
+          className="rounded-md p-2.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30"
+        >
+          <RedoIcon width={22} height={22} />
         </button>
 
         <div className="flex items-center rounded-lg bg-slate-100 p-1">

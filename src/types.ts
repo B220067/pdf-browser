@@ -1,22 +1,35 @@
-/** The three PDF built-in (standard 14) font families we expose. */
-export const FONT_FAMILIES = ['Helvetica', 'TimesRoman', 'Courier'] as const
+/**
+ * The font families we expose.
+ * - 'Arial' isn't one of the PDF standard 14, but is metrically identical to
+ *   Helvetica (same glyph widths), so it's saved as the built-in Helvetica.
+ * - 'GreatVibes' is an open-source (OFL) cursive for typed signatures; it's
+ *   bundled locally (src/assets) and embedded into the PDF at export — still
+ *   zero external network requests.
+ */
+export const FONT_FAMILIES = ['Arial', 'TimesRoman', 'Courier', 'GreatVibes'] as const
 export type FontFamily = (typeof FONT_FAMILIES)[number]
 
 export const FONT_LABELS: Record<FontFamily, string> = {
-  Helvetica: 'Helvetica',
+  Arial: 'Arial',
   TimesRoman: 'Times New Roman',
   Courier: 'Courier',
+  GreatVibes: 'Great Vibes (cursive)',
 }
 
 /**
- * CSS stacks that visually approximate the PDF standard fonts so the
- * on-screen overlay matches what pdf-lib will bake into the file.
+ * CSS stacks that visually match what will be baked into the file: the
+ * standard fonts approximate, Great Vibes is the exact same TTF loaded via
+ * @font-face in index.css.
  */
 export const FONT_CSS_STACKS: Record<FontFamily, string> = {
-  Helvetica: 'Helvetica, Arial, sans-serif',
+  Arial: 'Arial, Helvetica, sans-serif',
   TimesRoman: '"Times New Roman", Times, serif',
   Courier: '"Courier New", Courier, monospace',
+  GreatVibes: '"Great Vibes", cursive',
 }
+
+/** Colors offered as one-click swatches wherever a color can be picked. */
+export const PRESET_COLORS = ['#111827', '#1d4ed8', '#dc2626', '#15803d'] as const
 
 export const FONT_SIZES = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48] as const
 
@@ -56,9 +69,67 @@ export interface Stroke {
   /** Stroke width in PDF points. */
   width: number
   color: string
+  /**
+   * Strokes stamped together (one signature stamp) share a groupId so
+   * selecting any part selects — and moves — the whole signature as one.
+   * Hand-drawn strokes have none and select individually.
+   */
+  groupId?: string
 }
 
-export type Tool = 'select' | 'text' | 'draw' | 'erase'
+export type Tool = 'select' | 'text' | 'draw' | 'erase' | 'stamp'
+
+/**
+ * A signature drawn once (in the signature-capture modal) and reused across
+ * pages. Strokes are stored relative to the capture canvas's own origin;
+ * stamping translates every point by the click offset.
+ */
+export interface SignatureTemplate {
+  strokes: { points: Point[]; width: number; color: string }[]
+}
+
+/** Capture-canvas size in PDF points — sets how big a stamped signature is. */
+export const SIGNATURE_TEMPLATE_WIDTH = 220
+export const SIGNATURE_TEMPLATE_HEIGHT = 90
+
+/**
+ * One entry per page in the document AS CURRENTLY ARRANGED. Reordering
+ * permutes this array, deleting removes an entry, rotating bumps
+ * rotationDelta. Elements keep referencing their page by ORIGINAL index, so
+ * page moves never invalidate stored text/stroke coordinates.
+ */
+export interface PageEntry {
+  originalIndex: number
+  /** Extra user-applied rotation on top of the page's own /Rotate. */
+  rotationDelta: 0 | 90 | 180 | 270
+}
+
+export type FormFieldKind = 'text' | 'checkbox' | 'radio' | 'dropdown'
+
+/**
+ * One widget (visual instance) of an AcroForm field, detected via pdf.js
+ * `getAnnotations`. A logical field can have several widgets — e.g. each
+ * radio option is its own widget sharing the parent field's name. Values
+ * live separately in `formFieldValues`, keyed by fieldName, so multi-widget
+ * fields stay in sync automatically.
+ */
+export interface FormWidget {
+  id: string
+  fieldName: string
+  kind: FormFieldKind
+  /** Original page index (same convention as TextElement/Stroke). */
+  pageIndex: number
+  /** [x1, y1, x2, y2] in structural PDF space (bottom-left origin). */
+  rect: [number, number, number, number]
+  /** The "on" value this widget represents (checkbox/radio only). */
+  exportValue?: string
+  /** Dropdown choices. */
+  options?: { exportValue: string; displayValue: string }[]
+  multiLine?: boolean
+  readOnly?: boolean
+}
+
+export type FormFieldValue = string | boolean
 
 /**
  * Geometry captured from pdf.js when a page is first loaded. Everything the

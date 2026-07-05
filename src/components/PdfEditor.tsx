@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import { loadPdf } from '../lib/pdfjs'
-import { normalizeRotation, clamp } from '../lib/coords'
-import { editorReducer, initialEditorState } from '../lib/editorState'
+import { normalizeRotation, clamp, effectiveGeometry } from '../lib/coords'
+import { historyReducer, initialHistoryState } from '../lib/editorState'
 import {
   downloadBytes,
   editedFileName,
@@ -10,8 +10,10 @@ import {
   exportEditedPdf,
   isPdfEncrypted,
 } from '../lib/savePdf'
-import type { PageGeometry, Tool } from '../types'
+import type { FormFieldValue, FormWidget, PageGeometry, Tool } from '../types'
+import { PageThumbnails } from './PageThumbnails'
 import { PdfPage } from './PdfPage'
+import { SignatureCapture } from './SignatureCapture'
 import { Toolbar } from './Toolbar'
 
 interface PdfEditorProps {
@@ -24,6 +26,7 @@ interface LoadedDoc {
   doc: PDFDocumentProxy
   pages: PDFPageProxy[]
   geometries: PageGeometry[]
+  formWidgets: FormWidget[]
 }
 
 const TOOL_SHORTCUTS: Record<string, Tool> = {
@@ -33,15 +36,72 @@ const TOOL_SHORTCUTS: Record<string, Tool> = {
   e: 'erase',
 }
 
+/**
+ * Map pdf.js widget annotations onto our FormWidget model and collect each
+ * field's current value. Shapes verified against pdf.js output for real
+ * AcroForm files: text fields are fieldType 'Tx'; checkboxes/radios are
+ * 'Btn' with checkBox/radioButton flags (radios expose their per-widget
+ * "on" value as buttonValue, checkboxes as exportValue); dropdowns are 'Ch'.
+ */
+function extractFormWidgets(
+  annots: Array<Record<string, unknown>>,
+  pageIndex: number,
+): { widgets: FormWidget[]; values: Record<string, FormFieldValue> } {
+  const widgets: FormWidget[] = []
+  const values: Record<string, FormFieldValue> = {}
+
+  for (const a of annots) {
+    if (a.subtype !== 'Widget' || typeof a.fieldName !== 'string' || !a.fieldName) continue
+    const rect = a.rect as [number, number, number, number] | undefined
+    if (!rect) continue
+    const base = {
+      id: String(a.id ?? crypto.randomUUID()),
+      fieldName: a.fieldName,
+      pageIndex,
+      rect,
+      readOnly: a.readOnly === true,
+    }
+    const fieldValue = a.fieldValue
+
+    if (a.fieldType === 'Tx') {
+      widgets.push({ ...base, kind: 'text', multiLine: a.multiLine === true })
+      values[base.fieldName] = typeof fieldValue === 'string' ? fieldValue : ''
+    } else if (a.fieldType === 'Btn' && a.checkBox === true) {
+      const exportValue = typeof a.exportValue === 'string' ? a.exportValue : 'Yes'
+      widgets.push({ ...base, kind: 'checkbox', exportValue })
+      values[base.fieldName] = fieldValue !== 'Off' && fieldValue != null && fieldValue !== ''
+    } else if (a.fieldType === 'Btn' && a.radioButton === true) {
+      const exportValue = typeof a.buttonValue === 'string' ? a.buttonValue : ''
+      widgets.push({ ...base, kind: 'radio', exportValue })
+      values[base.fieldName] =
+        typeof fieldValue === 'string' && fieldValue !== 'Off' ? fieldValue : ''
+    } else if (a.fieldType === 'Ch') {
+      const options = Array.isArray(a.options)
+        ? (a.options as Array<{ exportValue?: unknown; displayValue?: unknown }>).map((o) => ({
+            exportValue: String(o.exportValue ?? ''),
+            displayValue: String(o.displayValue ?? ''),
+          }))
+        : []
+      widgets.push({ ...base, kind: 'dropdown', options })
+      const v = Array.isArray(fieldValue) ? fieldValue[0] : fieldValue
+      values[base.fieldName] = typeof v === 'string' ? v : ''
+    }
+    // Push buttons and unknown field types are left untouched.
+  }
+  return { widgets, values }
+}
+
 export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
   const [loaded, setLoaded] = useState<LoadedDoc | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [containerWidth, setContainerWidth] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [state, dispatch] = useReducer(editorReducer, initialEditorState)
+  const [history, dispatch] = useReducer(historyReducer, initialHistoryState)
+  const state = history.present
 
   // ----- document loading -------------------------------------------------
   useEffect(() => {
@@ -80,7 +140,23 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
             viewHeight: y2 - y1,
           }
         })
-        if (!cancelled) setLoaded({ doc, pages, geometries })
+        // Detect fillable AcroForm fields on every page.
+        const allWidgets: FormWidget[] = []
+        const allValues: Record<string, FormFieldValue> = {}
+        for (let i = 0; i < pages.length; i++) {
+          const annots = (await pages[i].getAnnotations({ intent: 'display' })) as Array<
+            Record<string, unknown>
+          >
+          const { widgets, values } = extractFormWidgets(annots, i)
+          allWidgets.push(...widgets)
+          Object.assign(allValues, values)
+        }
+
+        if (!cancelled) {
+          setLoaded({ doc, pages, geometries, formWidgets: allWidgets })
+          dispatch({ type: 'INIT_PAGES', count: pages.length })
+          if (allWidgets.length > 0) dispatch({ type: 'INIT_FIELDS', values: allValues })
+        }
       } catch (err) {
         console.error(err)
         if (!cancelled) {
@@ -138,6 +214,15 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
     setZoom((z) => clamp(z * factor, 0.1, 3))
   }, [])
 
+  // ----- signature capture / stamping ---------------------------------------
+  const handleSignatureClick = useCallback(() => {
+    if (state.savedSignature) {
+      dispatch({ type: 'SET_TOOL', tool: 'stamp' })
+    } else {
+      setSignatureModalOpen(true)
+    }
+  }, [state.savedSignature])
+
   // ----- keyboard shortcuts -------------------------------------------------
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -154,13 +239,21 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault()
-        dispatch({ type: 'UNDO_STROKE' })
+        dispatch({ type: e.shiftKey ? 'REDO' : 'UNDO' })
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault()
+        dispatch({ type: 'REDO' })
         return
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (state.selectedTextId) {
           e.preventDefault()
           dispatch({ type: 'REMOVE_TEXT', id: state.selectedTextId })
+        } else if (state.selectedStrokeKey) {
+          e.preventDefault()
+          dispatch({ type: 'REMOVE_STROKES', key: state.selectedStrokeKey })
         }
         return
       }
@@ -171,7 +264,7 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [state.selectedTextId])
+  }, [state.selectedTextId, state.selectedStrokeKey])
 
   // ----- save / download ----------------------------------------------------
   const handleDownload = useCallback(async () => {
@@ -179,7 +272,14 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
     setSaving(true)
     setSaveError(null)
     try {
-      const out = await exportEditedPdf(bytes, loaded.geometries, state.texts, state.strokes)
+      const out = await exportEditedPdf(
+        bytes,
+        loaded.geometries,
+        state.texts,
+        state.strokes,
+        state.pageOrder,
+        state.formFieldValues,
+      )
       downloadBytes(out, editedFileName(fileName))
     } catch (err) {
       console.error(err)
@@ -193,7 +293,7 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
     } finally {
       setSaving(false)
     }
-  }, [loaded, saving, bytes, state.texts, state.strokes, fileName])
+  }, [loaded, saving, bytes, state.texts, state.strokes, state.pageOrder, state.formFieldValues, fileName])
 
   // ----- render ---------------------------------------------------------------
   if (loadError) {
@@ -229,14 +329,31 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
         tool={state.tool}
         penColor={state.penColor}
         penWidth={state.penWidth}
-        canUndoStroke={state.strokes.length > 0}
+        canUndo={history.past.length > 0}
+        canRedo={history.future.length > 0}
+        hasSavedSignature={!!state.savedSignature}
         zoom={zoom}
         saving={saving}
         dispatch={dispatch}
         onZoom={handleZoom}
         onDownload={() => void handleDownload()}
         onClose={onClose}
+        onSignatureClick={handleSignatureClick}
+        onRedrawSignature={() => setSignatureModalOpen(true)}
       />
+
+      {signatureModalOpen && (
+        <SignatureCapture
+          penColor={state.penColor}
+          penWidth={state.penWidth}
+          onCancel={() => setSignatureModalOpen(false)}
+          onSave={(signature) => {
+            dispatch({ type: 'SET_SAVED_SIGNATURE', signature })
+            dispatch({ type: 'SET_TOOL', tool: 'stamp' })
+            setSignatureModalOpen(false)
+          }}
+        />
+      )}
 
       {saveError && (
         <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
@@ -244,18 +361,29 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-auto">
-        <div className="flex min-w-fit flex-col items-center gap-6 px-8 py-8">
-          {loaded.pages.map((page, i) => (
-            <PdfPage
-              key={i}
-              page={page}
-              geometry={loaded.geometries[i]}
-              scale={scale}
-              state={state}
-              dispatch={dispatch}
-            />
-          ))}
+      <div className="flex min-h-0 flex-1">
+        <PageThumbnails
+          pages={loaded.pages}
+          geometries={loaded.geometries}
+          pageOrder={state.pageOrder}
+          dispatch={dispatch}
+        />
+        <div ref={scrollRef} className="flex-1 overflow-auto">
+          <div className="flex min-w-fit flex-col items-center gap-6 px-8 py-8">
+            {state.pageOrder.map((entry, position) => (
+              <PdfPage
+                key={entry.originalIndex}
+                page={loaded.pages[entry.originalIndex]}
+                geometry={effectiveGeometry(loaded.geometries[entry.originalIndex], entry.rotationDelta)}
+                rotationDelta={entry.rotationDelta}
+                displayIndex={position}
+                formWidgets={loaded.formWidgets.filter((w) => w.pageIndex === entry.originalIndex)}
+                scale={scale}
+                state={state}
+                dispatch={dispatch}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>

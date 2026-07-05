@@ -4,6 +4,7 @@ import type { EditorAction } from '../lib/editorState'
 import { clamp } from '../lib/coords'
 import type { PageGeometry, TextElement } from '../types'
 import { FONT_CSS_STACKS, FONT_LABELS, FONT_FAMILIES, FONT_SIZES, LINE_HEIGHT } from '../types'
+import { ColorSwatches } from './ColorSwatches'
 import { GripIcon, TrashIcon } from './icons'
 
 interface TextBoxItemProps {
@@ -166,14 +167,11 @@ export function TextBoxItem({ el, geometry, scale, selected, dispatch }: TextBox
               </option>
             ))}
           </select>
-          <input
-            type="color"
+          <ColorSwatches
             value={el.color}
-            onChange={(e) =>
-              dispatch({ type: 'UPDATE_TEXT', id: el.id, patch: { color: e.target.value } })
-            }
-            className="h-5 w-6 cursor-pointer rounded border-0 bg-slate-800 p-0.5"
-            aria-label="Text color"
+            onChange={(color) => dispatch({ type: 'UPDATE_TEXT', id: el.id, patch: { color } })}
+            size="compact"
+            ariaLabel="Text color"
           />
           <button
             type="button"

@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Bundled locally (OFL license, src/assets) — same TTF gets embedded into
+   exported PDFs, so on-screen cursive text matches the file exactly. */
+@font-face {
+  font-family: "Great Vibes";
+  src: url("./assets/GreatVibes-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 html,
 body,
 #root {
