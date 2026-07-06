@@ -49,7 +49,7 @@ export function DropZone({ onFile }: DropZoneProps) {
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-100 p-6">
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-bold tracking-tight text-slate-900">
-          Ink<span className="text-sky-500">PDF</span>
+          Inks<span className="text-sky-500">PDF</span>
         </h1>
         <p className="mt-2 max-w-md text-slate-600">
           Add text, draw and sign PDFs — free, no sign-up, and{' '}

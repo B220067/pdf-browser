@@ -64,7 +64,7 @@ export function Toolbar({
     <header className="z-30 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
       <div className="flex min-w-0 items-center gap-2">
         <span className="text-xl font-bold tracking-tight text-slate-900">
-          Ink<span className="text-sky-500">PDF</span>
+          Inks<span className="text-sky-500">PDF</span>
         </span>
         <span className="hidden max-w-48 truncate text-sm text-slate-500 sm:block" title={fileName}>
           {fileName}
