@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Dispatch, PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, Dispatch, PointerEvent as ReactPointerEvent } from 'react'
+import { RenderingCancelledException, TextLayer } from 'pdfjs-dist'
 import type { PDFPageProxy } from 'pdfjs-dist'
-import { RenderingCancelledException } from 'pdfjs-dist'
 import type { EditorState, HistoryAction } from '../lib/editorState'
 import { clamp, clientToDisplayed } from '../lib/coords'
 import type { FormWidget, PageGeometry, Point, Stroke } from '../types'
@@ -40,9 +40,92 @@ export function PdfPage({
 }: PdfPageProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const textLayerRef = useRef<HTMLDivElement>(null)
+  const textLayerTaskRef = useRef<TextLayer | null>(null)
   // Lazy rendering: pages render their canvas once they approach the viewport
   // and stay rendered, so long documents load fast and scrolling stays smooth.
   const [nearViewport, setNearViewport] = useState(false)
+  useEffect(() => {
+    if (state.tool !== 'highlight') return
+    const handleTextSelection = () => {
+      const selection = window.getSelection()
+      if (!selection || selection.toString().length === 0) return
+
+      // Get the selection bounding boxes
+      const range = selection.getRangeAt(0)
+
+      // This listener is registered on `document` once per rendered page, so
+      // every page's instance fires on any mouseup, anywhere. Only the page
+      // that actually contains the selection should do anything — otherwise
+      // the empty-after-clipping fallback below would (and did) draw bogus,
+      // wrongly-scaled strokes using a different page's coordinate frame.
+      const pageEl = wrapperRef.current
+      if (!pageEl || !pageEl.contains(range.commonAncestorContainer)) return
+
+      let rects = Array.from(range.getClientRects())
+      // If getClientRects returned nothing (some browsers/edge cases),
+      // fall back to the single bounding rect.
+      if (rects.length === 0) {
+        const r = range.getBoundingClientRect()
+        if (r && r.width > 0 && r.height > 0) rects = [r]
+      }
+      if (rects.length === 0) return
+
+      const pageRect = pageEl.getBoundingClientRect()
+
+      // Create highlight strokes for each selection rect, but commit them in
+      // one batch so a single selection is one undo step.
+      const strokes: Stroke[] = []
+      const groupId = crypto.randomUUID()
+      // Filter rects to those that overlap the page area (avoid handles/UI)
+      const usable = rects
+        .map((r) => ({
+          left: Math.max(r.left, pageRect.left),
+          top: Math.max(r.top, pageRect.top),
+          right: Math.min(r.right, pageRect.right),
+          bottom: Math.min(r.bottom, pageRect.bottom),
+        }))
+        .filter((r) => r.right - r.left > 2 && r.bottom - r.top > 2)
+
+      // Nothing survived clipping to this page — genuinely nothing to
+      // highlight here. Do NOT fall back to the raw/unclipped rects; they
+      // may belong to a different page's screen position entirely.
+      if (usable.length === 0) return
+
+      for (const rect of usable) {
+        const x1 = (rect.left - pageRect.left) / scale
+        const y1 = (rect.top - pageRect.top) / scale
+        const x2 = (rect.right - pageRect.left) / scale
+        const y2 = (rect.bottom - pageRect.top) / scale
+
+        // Create a thin highlight stroke along the text. Use the vertical
+        // center of the rect so it lines up with text baseline/center.
+        const stroke: Stroke = {
+          id: crypto.randomUUID(),
+          pageIndex: geometry.pageIndex,
+          points: [
+            { x: x1, y: (y1 + y2) / 2 },
+            { x: x2, y: (y1 + y2) / 2 },
+          ],
+          width: Math.max(2, (y2 - y1) * 0.9), // height-based width
+          color: state.penColor,
+          opacity: 0.4,
+          groupId,
+        }
+        strokes.push(stroke)
+      }
+
+      if (strokes.length > 0) {
+        dispatch({ type: 'ADD_STROKES', strokes })
+      }
+      
+      // Clear selection
+      selection.removeAllRanges()
+    }
+    
+    document.addEventListener('mouseup', handleTextSelection)
+    return () => document.removeEventListener('mouseup', handleTextSelection)
+  }, [state.tool, state.penColor, geometry.pageIndex, scale])
 
   useEffect(() => {
     const el = wrapperRef.current
@@ -81,6 +164,40 @@ export function PdfPage({
     })
     return () => task.cancel()
   }, [page, scale, nearViewport, geometry.pageIndex, rotationDelta])
+
+  // Render PDF text content into the text layer for selection. We transform
+  // each page's text content using pdf.js's own TextLayer renderer, which
+  // applies the same ascent, width scaling, and rotation math as the viewer.
+  useEffect(() => {
+    if (!nearViewport || !textLayerRef.current) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const textContent = await page.getTextContent()
+        if (cancelled || !textLayerRef.current) return
+
+        const viewport = page.getViewport({
+          scale,
+          rotation: (page.rotate + rotationDelta) % 360,
+        })
+        textLayerTaskRef.current?.cancel()
+        textLayerTaskRef.current = new TextLayer({
+          textContentSource: textContent,
+          container: textLayerRef.current,
+          viewport,
+        })
+        textLayerRef.current!.innerHTML = ''
+        await textLayerTaskRef.current.render()
+      } catch {
+        // Ignore errors if text extraction fails
+      }
+    })()
+    return () => {
+      cancelled = true
+      textLayerTaskRef.current?.cancel()
+      textLayerTaskRef.current = null
+    }
+  }, [page, nearViewport, rotationDelta, scale])
 
   const handlePagePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!e.isPrimary) return
@@ -152,6 +269,31 @@ export function PdfPage({
         onPointerDown={handlePagePointerDown}
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden />
+        
+        {/* Text layer for selection (especially for highlighter tool) */}
+        <div
+          ref={textLayerRef}
+          className={`textLayer absolute inset-0 h-full w-full select-text ${
+            state.tool === 'highlight' ? 'cursor-text' : 'pointer-events-none'
+          }`}
+          style={
+            {
+              fontSize: 0,
+              color: 'transparent',
+              userSelect: 'text',
+              // pdf.js's own TextLayer CSS sizes each span via
+              // `calc(var(--text-scale-factor) * var(--font-height))`, which
+              // in turn depends on --total-scale-factor. The official pdf.js
+              // viewer chrome normally sets this custom property; since this
+              // app renders pages itself, nothing else sets it — leaving it
+              // empty, which makes the whole calc() chain invalid and
+              // silently falls back to the fontSize:0 above, collapsing
+              // every span to zero size. Set it directly to the same CSS
+              // scale used to build this layer's own viewport.
+              '--total-scale-factor': scale,
+            } as CSSProperties
+          }
+        />
 
         {formWidgets.length > 0 && (
           <FormFieldOverlay
@@ -184,6 +326,7 @@ export function PdfPage({
                 points,
                 width: state.penWidth,
                 color: state.penColor,
+                opacity: state.tool === 'highlight' ? 0.4 : 1,
               },
             })
           }

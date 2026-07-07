@@ -59,6 +59,14 @@ export interface TextElement {
   fontFamily: FontFamily
   /** Hex color, e.g. "#111827". */
   color: string
+  /** Text formatting. */
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  /** 'left' | 'center' | 'right' */
+  align?: 'left' | 'center' | 'right'
+  /** Opacity 0-1 */
+  opacity?: number
 }
 
 export interface Stroke {
@@ -75,9 +83,11 @@ export interface Stroke {
    * Hand-drawn strokes have none and select individually.
    */
   groupId?: string
+  /** Opacity 0-1 (for highlighter). */
+  opacity?: number
 }
 
-export type Tool = 'select' | 'text' | 'draw' | 'erase' | 'stamp'
+export type Tool = 'select' | 'text' | 'draw' | 'erase' | 'stamp' | 'highlight'
 
 /**
  * A signature drawn once (in the signature-capture modal) and reused across

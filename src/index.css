@@ -28,6 +28,35 @@
   --color-ink-600: #3d5a99;
 }
 
+/* pdf.js's TextLayer.render() sets per-span custom properties (--font-height
+   etc.) and a --total-scale-factor on the container, but ships the rules
+   that actually CONSUME them in a separate stylesheet we never imported.
+   Without this, every span inherits our own inline `font-size: 0` on the
+   container (set in PdfPage.tsx so the invisible text-selection layer takes
+   no visual space) with nothing to override it back per-span — collapsing
+   every text node to a zero-size box and making selection-based features
+   (the highlighter) unusable. Pulled from node_modules/pdfjs-dist's own
+   pdf_viewer.css — only the rules that size/position spans for selection,
+   not its native annotation-highlight or viewer-chrome styling (we render
+   highlights ourselves via InkLayer's SVG strokes). */
+.textLayer {
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+}
+
 html,
 body,
 #root {

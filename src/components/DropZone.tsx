@@ -4,6 +4,7 @@ import { EyeOffIcon, ExpandIcon, ExternalLinkIcon, FileIcon, LockIcon, LogoMark,
 
 interface DropZoneProps {
   onFile: (bytes: ArrayBuffer, name: string) => void
+  onMergeClick: () => void
 }
 
 const SOURCE_URL = 'https://github.com/B220067/pdf-browser'
@@ -41,7 +42,7 @@ function isPdf(file: File): boolean {
   return file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
 }
 
-export function DropZone({ onFile }: DropZoneProps) {
+export function DropZone({ onFile, onMergeClick }: DropZoneProps) {
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -196,6 +197,17 @@ export function DropZone({ onFile }: DropZoneProps) {
                 {error}
               </p>
             )}
+
+            <div className="mt-6 flex flex-col items-center gap-3 text-center sm:flex-row sm:gap-4">
+              <p className="text-sm text-slate-500">Need to combine multiple PDFs?</p>
+              <button
+                type="button"
+                onClick={onMergeClick}
+                className="rounded-lg bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-ink-800"
+              >
+                Merge PDFs
+              </button>
+            </div>
           </div>
         </div>
 

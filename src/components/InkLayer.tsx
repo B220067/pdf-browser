@@ -290,6 +290,7 @@ export function InkLayer({
               strokeWidth={s.width}
               strokeLinecap="round"
               strokeLinejoin="round"
+              opacity={s.opacity ?? 1}
             />
             {(erasing || selecting) && (
               // Fat invisible twin: easy to hit with mouse or finger.
@@ -333,6 +334,7 @@ export function InkLayer({
           strokeWidth={penWidth}
           strokeLinecap="round"
           strokeLinejoin="round"
+          opacity={tool === 'highlight' ? 0.4 : 1}
         />
       )}
     </svg>

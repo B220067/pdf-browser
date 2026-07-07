@@ -34,6 +34,24 @@ const STANDARD_FONT_MAP: Partial<Record<FontFamily, StandardFonts>> = {
   // GreatVibes is not here: it's a bundled TTF embedded via fontkit below.
 }
 
+const BOLD_FONT_MAP: Partial<Record<StandardFonts, StandardFonts>> = {
+  [StandardFonts.Helvetica]: StandardFonts.HelveticaBold,
+  [StandardFonts.TimesRoman]: StandardFonts.TimesRomanBold,
+  [StandardFonts.Courier]: StandardFonts.CourierBold,
+}
+
+const ITALIC_FONT_MAP: Partial<Record<StandardFonts, StandardFonts>> = {
+  [StandardFonts.Helvetica]: StandardFonts.HelveticaOblique,
+  [StandardFonts.TimesRoman]: StandardFonts.TimesRomanItalic,
+  [StandardFonts.Courier]: StandardFonts.CourierOblique,
+}
+
+const BOLD_ITALIC_FONT_MAP: Partial<Record<StandardFonts, StandardFonts>> = {
+  [StandardFonts.Helvetica]: StandardFonts.HelveticaBoldOblique,
+  [StandardFonts.TimesRoman]: StandardFonts.TimesRomanBoldItalic,
+  [StandardFonts.Courier]: StandardFonts.CourierBoldOblique,
+}
+
 /** Fetched once per session; the TTF is a local bundled asset, not a CDN. */
 let greatVibesBytes: Promise<ArrayBuffer> | null = null
 function loadGreatVibes(): Promise<ArrayBuffer> {
@@ -207,13 +225,23 @@ export async function exportEditedPdf(
     })
   }
 
-  const fontCache = new Map<FontFamily, PDFFont>()
-  const fontFor = async (family: FontFamily): Promise<PDFFont> => {
-    let font = fontCache.get(family)
+  const fontCache = new Map<string, PDFFont>()
+  const fontFor = async (family: FontFamily, bold: boolean = false, italic: boolean = false): Promise<PDFFont> => {
+    const cacheKey = `${family}:${bold}:${italic}`
+    let font = fontCache.get(cacheKey)
     if (!font) {
       const standard = STANDARD_FONT_MAP[family]
       if (standard) {
-        font = await doc.embedFont(standard)
+        // For standard fonts, select the appropriate variant
+        let fontEnum = standard
+        if (bold && italic) {
+          fontEnum = BOLD_ITALIC_FONT_MAP[standard] ?? standard
+        } else if (bold) {
+          fontEnum = BOLD_FONT_MAP[standard] ?? standard
+        } else if (italic) {
+          fontEnum = ITALIC_FONT_MAP[standard] ?? standard
+        }
+        font = await doc.embedFont(fontEnum)
       } else {
         // Great Vibes: embed (subsetted) from the bundled TTF. fontkit is
         // ~700 kB, so it's loaded lazily — only exports that actually use
@@ -222,7 +250,7 @@ export async function exportEditedPdf(
         doc.registerFontkit(fontkit)
         font = await doc.embedFont(await loadGreatVibes(), { subset: true })
       }
-      fontCache.set(family, font)
+      fontCache.set(cacheKey, font)
     }
     return font
   }
@@ -233,7 +261,7 @@ export async function exportEditedPdf(
       const text = sanitizeForWinAnsi(el.text)
       if (!text.trim()) continue
 
-      const font = await fontFor(el.fontFamily)
+      const font = await fontFor(el.fontFamily, el.bold ?? false, el.italic ?? false)
       const lineHeight = el.fontSize * LINE_HEIGHT
       const ascent = font.heightAtSize(el.fontSize, { descender: false })
       const glyphHeight = font.heightAtSize(el.fontSize) // ascent + |descent|
@@ -273,7 +301,7 @@ export async function exportEditedPdf(
         borderWidth: stroke.width,
         borderColor: rgb(r, gg, b),
         borderLineCap: LineCapStyle.Round,
-        borderOpacity: 1,
+        borderOpacity: stroke.opacity ?? 1,
       })
     }
   }

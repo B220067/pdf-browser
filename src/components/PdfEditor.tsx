@@ -11,6 +11,8 @@ import {
   isPdfEncrypted,
 } from '../lib/savePdf'
 import type { FormFieldValue, FormWidget, PageGeometry, Tool } from '../types'
+import { CloseIcon } from './icons'
+import { MobilePageDrawer } from './MobilePageDrawer'
 import { PageThumbnails } from './PageThumbnails'
 import { PdfPage } from './PdfPage'
 import { SignatureCapture } from './SignatureCapture'
@@ -34,6 +36,7 @@ const TOOL_SHORTCUTS: Record<string, Tool> = {
   t: 'text',
   d: 'draw',
   e: 'erase',
+  h: 'highlight',
 }
 
 /**
@@ -97,6 +100,8 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [signatureModalOpen, setSignatureModalOpen] = useState(false)
+  const [pageDrawerOpen, setPageDrawerOpen] = useState(false)
+  const [inkNoticeDismissed, setInkNoticeDismissed] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [containerWidth, setContainerWidth] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -213,6 +218,26 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
     // viewer's zoom-out.
     setZoom((z) => clamp(z * factor, 0.1, 3))
   }, [])
+
+  // ----- unsaved-work protection ---------------------------------------------
+  // Refreshing, closing the tab, or navigating away loses everything (state
+  // is in-memory only, no autosave) — warn while there's undo history to lose.
+  useEffect(() => {
+    if (history.past.length === 0) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [history.past.length])
+
+  const handleClose = useCallback(() => {
+    if (history.past.length > 0 && !window.confirm('Close without saving? Your edits will be lost.')) {
+      return
+    }
+    onClose()
+  }, [history.past.length, onClose])
 
   // ----- signature capture / stamping ---------------------------------------
   const handleSignatureClick = useCallback(() => {
@@ -334,12 +359,14 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
         hasSavedSignature={!!state.savedSignature}
         zoom={zoom}
         saving={saving}
+        pageDrawerOpen={pageDrawerOpen}
         dispatch={dispatch}
         onZoom={handleZoom}
         onDownload={() => void handleDownload()}
-        onClose={onClose}
+        onClose={handleClose}
         onSignatureClick={handleSignatureClick}
         onRedrawSignature={() => setSignatureModalOpen(true)}
+        onPageDrawerToggle={() => setPageDrawerOpen(!pageDrawerOpen)}
       />
 
       {signatureModalOpen && (
@@ -355,9 +382,37 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
         />
       )}
 
+      <MobilePageDrawer
+        open={pageDrawerOpen}
+        pages={loaded.pages}
+        geometries={loaded.geometries}
+        pageOrder={state.pageOrder}
+        dispatch={dispatch}
+        onClose={() => setPageDrawerOpen(false)}
+      />
+
       {saveError && (
         <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
           {saveError}
+        </div>
+      )}
+
+      {state.strokes.length > 0 && !inkNoticeDismissed && (
+        <div
+          role="note"
+          className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800"
+        >
+          <span>
+            Drawing covers content visually — it doesn't remove or redact the text underneath.
+          </span>
+          <button
+            type="button"
+            onClick={() => setInkNoticeDismissed(true)}
+            aria-label="Dismiss"
+            className="shrink-0 rounded p-1 hover:bg-amber-100"
+          >
+            <CloseIcon width={16} height={16} />
+          </button>
         </div>
       )}
 

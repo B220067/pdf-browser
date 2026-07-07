@@ -5,15 +5,17 @@ import { RenderingCancelledException } from 'pdfjs-dist'
 import type { HistoryAction } from '../lib/editorState'
 import { effectiveGeometry } from '../lib/coords'
 import type { PageEntry, PageGeometry } from '../types'
-import { RotateIcon, TrashIcon } from './icons'
+import { RotateIcon, TrashIcon, CloseIcon } from './icons'
 
-const THUMB_WIDTH = 96
+const THUMB_WIDTH = 80
 
-interface PageThumbnailsProps {
+interface MobilePageDrawerProps {
+  open: boolean
   pages: PDFPageProxy[]
   geometries: PageGeometry[]
   pageOrder: PageEntry[]
   dispatch: Dispatch<HistoryAction>
+  onClose: () => void
 }
 
 function Thumbnail({
@@ -34,7 +36,7 @@ function Thumbnail({
     if (!canvas) return
     const scale = THUMB_WIDTH / width
     const viewport = page.getViewport({
-      scale: scale * 2, // 2x for crispness at thumbnail size
+      scale: scale * 2,
       rotation: (page.rotate + rotationDelta) % 360,
     })
     canvas.width = Math.floor(viewport.width)
@@ -56,12 +58,14 @@ function Thumbnail({
   )
 }
 
-/**
- * Sidebar with one draggable thumbnail per page: drag to reorder, plus
- * rotate/delete buttons. Reordering uses the same pointer-capture pattern
- * as TextBoxItem's drag — no drag-and-drop library.
- */
-export function PageThumbnails({ pages, geometries, pageOrder, dispatch }: PageThumbnailsProps) {
+export function MobilePageDrawer({
+  open,
+  pages,
+  geometries,
+  pageOrder,
+  dispatch,
+  onClose,
+}: MobilePageDrawerProps) {
   const itemRefs = useRef(new Map<number, HTMLDivElement>())
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
   const dragRef = useRef<{ pointerId: number; from: number; over: number } | null>(null)
@@ -108,39 +112,48 @@ export function PageThumbnails({ pages, geometries, pageOrder, dispatch }: PageT
     }
   }
 
+  if (!open) return null
+
   return (
-    <aside className="hidden w-40 shrink-0 overflow-y-auto border-r border-slate-300 bg-slate-100 p-3 md:block">
-      <div className="flex flex-col gap-3">
-        {pageOrder.map((entry, index) => {
-          const base = geometries[entry.originalIndex]
-          const geom = effectiveGeometry(base, entry.rotationDelta)
-          const isDragging = drag?.from === index
-          const isDropTarget = drag !== null && drag.over === index && drag.from !== index
-          const thumbHeight = (geom.height / geom.width) * THUMB_WIDTH
-
-          return (
-            <div key={entry.originalIndex}>
-              {/* Visible placeholder at the drop target to clearly indicate
-                  where the dragged page will land. */}
-              {isDropTarget && (
-                <div
-                  className="mb-2 flex items-center justify-center rounded border-2 border-dashed border-sky-500 bg-sky-50/30"
-                  style={{ width: THUMB_WIDTH, height: thumbHeight }}
-                />
-              )}
-
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/20"
+        onClick={onClose}
+      />
+      {/* Drawer */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 max-h-96 flex flex-col gap-3 rounded-t-2xl border-t border-slate-200 bg-white p-4 shadow-lg">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-900">Pages</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <CloseIcon width={20} height={20} />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex flex-col gap-2">
+          {pageOrder.map((entry, index) => {
+            const base = geometries[entry.originalIndex]
+            const geom = effectiveGeometry(base, entry.rotationDelta)
+            const isDragging = drag?.from === index
+            const isDropTarget = drag !== null && drag.over === index && drag.from !== index
+            return (
               <div
+                key={entry.originalIndex}
                 ref={(el) => {
                   if (el) itemRefs.current.set(index, el)
                   else itemRefs.current.delete(index)
                 }}
-                className={`group relative touch-none rounded-lg border p-1.5 transition-all duration-150 ease-out transform-gpu ${
+                className={`group relative touch-none flex items-center gap-2 rounded-lg border p-2 transition-colors ${
                   isDragging
-                    ? 'opacity-30 scale-95'
-                    : 'border-slate-200 bg-white hover:border-sky-300'
-                } ${isDropTarget ? 'ring-2 ring-sky-200' : ''}`}
+                    ? 'border-sky-400 bg-sky-50 opacity-60'
+                    : isDropTarget
+                      ? 'border-sky-500 bg-sky-100'
+                      : 'border-slate-200 bg-white hover:border-sky-300'
+                }`}
                 onPointerDown={(e) => {
-                  // Buttons handle their own clicks; everywhere else starts a drag.
                   if ((e.target as HTMLElement).closest('button')) return
                   startDrag(e, index)
                 }}
@@ -148,6 +161,7 @@ export function PageThumbnails({ pages, geometries, pageOrder, dispatch }: PageT
                 onPointerUp={endDrag}
                 onPointerCancel={endDrag}
               >
+                <span className="text-xs font-medium text-slate-500 w-8 text-center">{index + 1}</span>
                 <div className="cursor-grab overflow-hidden rounded border border-slate-100">
                   <Thumbnail
                     page={pages[entry.originalIndex]}
@@ -156,41 +170,38 @@ export function PageThumbnails({ pages, geometries, pageOrder, dispatch }: PageT
                     height={geom.height}
                   />
                 </div>
-                <div className="mt-1 flex items-center justify-between">
-                  <span className="pl-1 text-xs font-medium text-slate-500">{index + 1}</span>
-                  <div className="flex gap-0.5">
-                    <button
-                      type="button"
-                      title="Rotate page 90° clockwise"
-                      onClick={() =>
-                        dispatch({
-                          type: 'ROTATE_PAGE',
-                          originalIndex: entry.originalIndex,
-                          baseGeometry: base,
-                        })
-                      }
-                      className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-sky-600"
-                    >
-                      <RotateIcon width={14} height={14} />
-                    </button>
-                    <button
-                      type="button"
-                      title={pageOrder.length === 1 ? 'Cannot delete the last page' : 'Delete page'}
-                      disabled={pageOrder.length === 1}
-                      onClick={() =>
-                        dispatch({ type: 'DELETE_PAGE', originalIndex: entry.originalIndex })
-                      }
-                      className="rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
-                    >
-                      <TrashIcon width={14} height={14} />
-                    </button>
-                  </div>
+                <div className="flex gap-0.5">
+                  <button
+                    type="button"
+                    title="Rotate page 90° clockwise"
+                    onClick={() =>
+                      dispatch({
+                        type: 'ROTATE_PAGE',
+                        originalIndex: entry.originalIndex,
+                        baseGeometry: base,
+                      })
+                    }
+                    className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-sky-600"
+                  >
+                    <RotateIcon width={14} height={14} />
+                  </button>
+                  <button
+                    type="button"
+                    title={pageOrder.length === 1 ? 'Cannot delete the last page' : 'Delete page'}
+                    disabled={pageOrder.length === 1}
+                    onClick={() =>
+                      dispatch({ type: 'DELETE_PAGE', originalIndex: entry.originalIndex })
+                    }
+                    className="rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
+                  >
+                    <TrashIcon width={14} height={14} />
+                  </button>
                 </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
-    </aside>
+    </>
   )
 }

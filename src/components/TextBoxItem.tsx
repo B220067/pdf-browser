@@ -5,7 +5,13 @@ import { clamp } from '../lib/coords'
 import type { PageGeometry, TextElement } from '../types'
 import { FONT_CSS_STACKS, FONT_LABELS, FONT_FAMILIES, FONT_SIZES, LINE_HEIGHT } from '../types'
 import { ColorSwatches } from './ColorSwatches'
-import { GripIcon, TrashIcon } from './icons'
+import {
+  BoldIcon,
+  GripIcon,
+  ItalicIcon,
+  TrashIcon,
+  UnderlineIcon,
+} from './icons'
 
 interface TextBoxItemProps {
   el: TextElement
@@ -118,7 +124,7 @@ export function TextBoxItem({ el, geometry, scale, selected, dispatch }: TextBox
     >
       {selected && (
         <div
-          className="absolute -top-10 left-0 flex items-center gap-1 rounded-lg bg-slate-900 px-1.5 py-1 text-white shadow-lg"
+          className="absolute top-full left-0 mt-2 flex flex-wrap items-center gap-1 rounded-lg bg-slate-900 px-1.5 py-1 text-white shadow-lg"
           onPointerDown={(e) => e.stopPropagation()}
         >
           <span
@@ -173,6 +179,62 @@ export function TextBoxItem({ el, geometry, scale, selected, dispatch }: TextBox
             size="compact"
             ariaLabel="Text color"
           />
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              title="Bold"
+              onClick={() =>
+                dispatch({
+                  type: 'UPDATE_TEXT',
+                  id: el.id,
+                  patch: { bold: !el.bold },
+                })
+              }
+              className={`rounded p-1.5 transition-colors ${
+                el.bold
+                  ? 'bg-sky-500 text-white'
+                  : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+              }`}
+            >
+              <BoldIcon width={16} height={16} />
+            </button>
+            <button
+              type="button"
+              title="Italic"
+              onClick={() =>
+                dispatch({
+                  type: 'UPDATE_TEXT',
+                  id: el.id,
+                  patch: { italic: !el.italic },
+                })
+              }
+              className={`rounded p-1.5 transition-colors ${
+                el.italic
+                  ? 'bg-sky-500 text-white'
+                  : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+              }`}
+            >
+              <ItalicIcon width={16} height={16} />
+            </button>
+            <button
+              type="button"
+              title="Underline"
+              onClick={() =>
+                dispatch({
+                  type: 'UPDATE_TEXT',
+                  id: el.id,
+                  patch: { underline: !el.underline },
+                })
+              }
+              className={`rounded p-1.5 transition-colors ${
+                el.underline
+                  ? 'bg-sky-500 text-white'
+                  : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+              }`}
+            >
+              <UnderlineIcon width={16} height={16} />
+            </button>
+          </div>
           <button
             type="button"
             title="Delete text box"
@@ -211,6 +273,9 @@ export function TextBoxItem({ el, geometry, scale, selected, dispatch }: TextBox
             lineHeight: LINE_HEIGHT,
             fontFamily: FONT_CSS_STACKS[el.fontFamily],
             color: el.color,
+            fontWeight: el.bold ? 'bold' : 'normal',
+            fontStyle: el.italic ? 'italic' : 'normal',
+            textDecoration: el.underline ? 'underline' : 'none',
           }}
         />
       </div>

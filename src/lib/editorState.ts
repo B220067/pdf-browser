@@ -47,6 +47,7 @@ export type EditorAction =
   | { type: 'REMOVE_TEXT'; id: string }
   | { type: 'SELECT_TEXT'; id: string | null }
   | { type: 'ADD_STROKE'; stroke: Stroke }
+  | { type: 'ADD_STROKES'; strokes: Stroke[] }
   | { type: 'REMOVE_STROKE'; id: string }
   | { type: 'SELECT_STROKES'; key: string | null }
   | { type: 'MOVE_STROKES'; key: string; dx: number; dy: number }
@@ -102,6 +103,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
     case 'ADD_STROKE':
       return { ...state, strokes: [...state.strokes, action.stroke] }
+    case 'ADD_STROKES':
+      return { ...state, strokes: [...state.strokes, ...action.strokes] }
     case 'REMOVE_STROKE':
       return { ...state, strokes: state.strokes.filter((s) => s.id !== action.id) }
     case 'SELECT_STROKES':
@@ -252,6 +255,7 @@ const CONTENT_ACTIONS = new Set<EditorAction['type']>([
   'REMOVE_TEXT',
   'UPDATE_TEXT',
   'ADD_STROKE',
+  'ADD_STROKES',
   'REMOVE_STROKE',
   'MOVE_STROKES',
   'SCALE_STROKES',

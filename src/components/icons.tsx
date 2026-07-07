@@ -177,3 +177,47 @@ export const ExpandIcon = (p: IconProps) => (
     <path d="M16 21h3a2 2 0 002-2v-3" />
   </svg>
 )
+
+export const HighlighterIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M17 3l4 4-12 12H5v-4L17 3z" />
+    <path d="M5 19v2h2l6-6" strokeWidth={1.5} fill="none" />
+  </svg>
+)
+
+export const BoldIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <text x="12" y="18" fontSize="18" fontWeight="bold" textAnchor="middle" fill="currentColor">B</text>
+  </svg>
+)
+
+export const ItalicIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <text x="12" y="18" fontSize="18" fontStyle="italic" textAnchor="middle" fill="currentColor">I</text>
+  </svg>
+)
+
+export const UnderlineIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <text x="12" y="17" fontSize="18" textAnchor="middle" fill="currentColor">U</text>
+    <line x1="4" y1="20" x2="20" y2="20" stroke="currentColor" strokeWidth="2" />
+  </svg>
+)
+
+export const AlignLeftIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 6h18M3 12h12M3 18h18" strokeWidth={2} />
+  </svg>
+)
+
+export const AlignCenterIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 6h18M6 12h12M3 18h18" strokeWidth={2} />
+  </svg>
+)
+
+export const AlignRightIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 6h18M9 12h12M3 18h18" strokeWidth={2} />
+  </svg>
+)
