@@ -10,6 +10,24 @@
   font-display: swap;
 }
 
+/* Self-hosted (OFL license, src/assets) — latin subset, single static
+   weight only, so it doesn't reintroduce a third-party font request that
+   would contradict the "zero tracking" claim. Display font for headings
+   only; body text stays on the system stack below. */
+@font-face {
+  font-family: "Fraunces";
+  src: url("./assets/Fraunces-Latin-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-display: "Fraunces", ui-serif, serif;
+  --color-ink-900: #1b2a4a;
+  --color-ink-600: #3d5a99;
+}
+
 html,
 body,
 #root {
@@ -21,4 +39,24 @@ body {
   color: #0f172a;
   -webkit-font-smoothing: antialiased;
   font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scoped inside the media query (rather than gated by a separate class) so
+   that with reduced motion requested, elements simply render at their final
+   opacity/position instead of needing a no-animation fallback state. */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-fade-up {
+    animation: fade-up 0.5s ease-out both;
+  }
 }

@@ -127,3 +127,53 @@ export const FileIcon = (p: IconProps) => (
     <path d="M14 2v6h6" />
   </svg>
 )
+
+export const LockIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V7a4 4 0 018 0v4" />
+  </svg>
+)
+
+export const EyeOffIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 3l18 18" />
+    <path d="M10.6 5.1A10.9 10.9 0 0112 5c5 0 9 4 10 7-.5 1.4-1.5 3-3 4.3M6.2 6.2C4 7.7 2.7 9.7 2 12c1 3 5 7 10 7 1.4 0 2.7-.3 3.9-.8" />
+    <path d="M9.5 10a3 3 0 004 4" />
+  </svg>
+)
+
+export const ZapIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" />
+  </svg>
+)
+
+export const ExternalLinkIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+    <path d="M15 3h6v6" />
+    <path d="M10 14L21 3" />
+  </svg>
+)
+
+/** The brand mark — same shape as public/favicon.svg, reused inline (not an
+ * <img>) so it scales crisply and needs no extra request. */
+export const LogoMark = (p: IconProps) => (
+  <svg viewBox="0 0 32 32" aria-hidden {...p}>
+    <rect width="32" height="32" rx="7" className="fill-ink-900" />
+    <path
+      d="M9 23c3-1 4-2 5.5-4.5S18 13 20 11l2-2 1 1-2 2c-2 2-3.5 4-5.5 5.5S12 21 9 23z"
+      fill="white"
+    />
+  </svg>
+)
+
+export const ExpandIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M8 3H5a2 2 0 00-2 2v3" />
+    <path d="M16 3h3a2 2 0 012 2v3" />
+    <path d="M8 21H5a2 2 0 01-2-2v-3" />
+    <path d="M16 21h3a2 2 0 002-2v-3" />
+  </svg>
+)
