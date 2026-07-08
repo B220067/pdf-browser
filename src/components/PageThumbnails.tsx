@@ -14,6 +14,7 @@ interface PageThumbnailsProps {
   geometries: PageGeometry[]
   pageOrder: PageEntry[]
   dispatch: Dispatch<HistoryAction>
+  onNavigateToPage: (originalIndex: number) => void
 }
 
 function Thumbnail({
@@ -61,7 +62,13 @@ function Thumbnail({
  * rotate/delete buttons. Reordering uses the same pointer-capture pattern
  * as TextBoxItem's drag — no drag-and-drop library.
  */
-export function PageThumbnails({ pages, geometries, pageOrder, dispatch }: PageThumbnailsProps) {
+export function PageThumbnails({
+  pages,
+  geometries,
+  pageOrder,
+  dispatch,
+  onNavigateToPage,
+}: PageThumbnailsProps) {
   const itemRefs = useRef(new Map<number, HTMLDivElement>())
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
   const dragRef = useRef<{ pointerId: number; from: number; over: number } | null>(null)
@@ -105,6 +112,10 @@ export function PageThumbnails({ pages, geometries, pageOrder, dispatch }: PageT
     setDrag(null)
     if (d.from !== d.over) {
       dispatch({ type: 'REORDER_PAGES', from: d.from, to: d.over })
+    } else {
+      // Released back where it started — this was a click/tap, not a drag,
+      // so jump the main view to this page instead of doing nothing.
+      onNavigateToPage(pageOrder[d.from].originalIndex)
     }
   }
 

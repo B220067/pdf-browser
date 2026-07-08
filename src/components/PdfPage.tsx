@@ -77,25 +77,97 @@ export function PdfPage({
       // one batch so a single selection is one undo step.
       const strokes: Stroke[] = []
       const groupId = crypto.randomUUID()
-      // Filter rects to those that overlap the page area (avoid handles/UI)
-      const usable = rects
-        .map((r) => ({
-          left: Math.max(r.left, pageRect.left),
-          top: Math.max(r.top, pageRect.top),
-          right: Math.min(r.right, pageRect.right),
-          bottom: Math.min(r.bottom, pageRect.bottom),
-        }))
-        .filter((r) => r.right - r.left > 2 && r.bottom - r.top > 2)
+      // The commonAncestorContainer check above already guarantees these
+      // rects belong to THIS page, so just drop degenerate zero-size ones —
+      // don't clamp surviving rects to pageRect's own box. That clamp used
+      // to be load-bearing (the old cross-page bug relied on it to avoid
+      // drawing rects that belonged to a completely different page), but
+      // now it only ever hurts: any rect a sub-pixel wider than the
+      // computed pageRect (a common rounding mismatch between a container's
+      // layout box and its rendered glyphs) got its far edge chopped off,
+      // which is exactly why highlights were cutting off a character or two
+      // before the actual end of a selection.
+      let usable = rects.filter((r) => r.width > 2 && r.height > 2)
 
-      // Nothing survived clipping to this page — genuinely nothing to
-      // highlight here. Do NOT fall back to the raw/unclipped rects; they
-      // may belong to a different page's screen position entirely.
       if (usable.length === 0) return
 
-      for (const rect of usable) {
-        const x1 = (rect.left - pageRect.left) / scale
+      // Chrome's getClientRects() can report TWO rects for the very same
+      // span here — identical left/right, but one a few px inset top/bottom
+      // from the other (an inner "glyph ink" box vs. an outer "line box";
+      // observed on this text layer's absolutely-positioned, custom
+      // line-height spans). Collapse duplicates sharing a horizontal span
+      // into one union rect before grouping by line, or the two variants'
+      // slightly different tops can land on opposite sides of the line-
+      // grouping tolerance below and get treated as separate lines.
+      const byHorizontalSpan = new Map<string, DOMRect[]>()
+      for (const r of usable) {
+        const key = `${Math.round(r.left)}:${Math.round(r.right)}`
+        const group = byHorizontalSpan.get(key)
+        if (group) group.push(r)
+        else byHorizontalSpan.set(key, [r])
+      }
+      usable = [...byHorizontalSpan.values()].map((group) => {
+        if (group.length === 1) return group[0]
+        const top = Math.min(...group.map((r) => r.top))
+        const bottom = Math.max(...group.map((r) => r.bottom))
+        return new DOMRect(group[0].left, top, group[0].width, bottom - top)
+      })
+
+      // A single visual line can still produce MULTIPLE separate rects here:
+      // pdf.js gives mixed-weight runs (e.g. bold numbers inline in a
+      // regular-weight paragraph) their own text items, since it only merges
+      // adjacent same-styled runs into one span. Left un-merged, each span
+      // got its own independently-padded stroke — at every boundary between
+      // a regular-weight span and an adjacent bold one, two (sometimes
+      // three) semi-transparent strokes overlapped, visibly darkening
+      // exactly the bold text a highlight crossed. Group rects by line and
+      // merge each group into one bounding rect so a line gets exactly one
+      // stroke regardless of how many differently-styled spans it's made of.
+      //
+      // Group by BOTTOM, not top. Measured directly: a rect touching either
+      // end of the selection Range (vs. one fully enclosed in the middle)
+      // can get a noticeably different top/height even within the SAME
+      // line and same run of text — up to ~5px in testing — which a
+      // top-tolerance comparison can't distinguish from a genuinely
+      // different, closely-spaced next line. Bottoms stayed consistent
+      // within a line in the same test (≤~5px apart) while differing
+      // clearly between lines (20px+), so they're the more reliable anchor.
+      const LINE_TOLERANCE = 8 // CSS px
+      const byLine: DOMRect[][] = []
+      for (const r of [...usable].sort((a, b) => a.bottom - b.bottom)) {
+        const line = byLine.find((group) => Math.abs(group[0].bottom - r.bottom) < LINE_TOLERANCE)
+        if (line) line.push(r)
+        else byLine.push([r])
+      }
+      const mergedLines = byLine.map((group) => {
+        const left = Math.min(...group.map((r) => r.left))
+        const right = Math.max(...group.map((r) => r.right))
+        const top = Math.min(...group.map((r) => r.top))
+        const bottom = Math.max(...group.map((r) => r.bottom))
+        return { left, right, top, bottom, height: bottom - top }
+      })
+
+      // pdf.js's text layer is an invisible APPROXIMATION built for
+      // selection/search, not a pixel-exact copy of the rendered glyphs: it
+      // measures each span using a generic fallback font (confirmed via
+      // inspection — spans render with computed font-weight 400 even when
+      // the PDF's actual font is bold) and stretches it to the PDF's true
+      // text width via a single per-span `--scale-x` transform. That works
+      // for most text, but under-corrects for bold/styled runs, leaving the
+      // selectable area a little short of where the glyphs actually render —
+      // confirmed the START edge lines up with the canvas within a pixel, so
+      // the shortfall is at the END only. Pad the trailing edge by roughly
+      // one character's width (approximated from the rect's own height/line
+      // size, not its length — a whole-line-length-proportional pad
+      // overshoot badly on long lines) and the leading edge only a little
+      // (rounding/antialiasing, not measurement drift).
+      const START_PAD = 2 // CSS px
+      const endPad = (rect: { height: number }) => rect.height * 1.1
+
+      for (const rect of mergedLines) {
+        const x1 = (rect.left - START_PAD - pageRect.left) / scale
         const y1 = (rect.top - pageRect.top) / scale
-        const x2 = (rect.right - pageRect.left) / scale
+        const x2 = (rect.right + endPad(rect) - pageRect.left) / scale
         const y2 = (rect.bottom - pageRect.top) / scale
 
         // Create a thin highlight stroke along the text. Use the vertical

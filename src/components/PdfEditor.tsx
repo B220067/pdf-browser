@@ -219,6 +219,15 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
     setZoom((z) => clamp(z * factor, 0.1, 3))
   }, [])
 
+  // ----- page navigation (thumbnail click) -----------------------------------
+  // Pages are keyed by their ORIGINAL index (data-page in PdfPage.tsx), which
+  // stays stable across reorder/rotate — matches what PageThumbnails/
+  // MobilePageDrawer already track per entry.
+  const handleNavigateToPage = useCallback((originalIndex: number) => {
+    const el = scrollRef.current?.querySelector(`[data-page="${originalIndex}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
   // ----- unsaved-work protection ---------------------------------------------
   // Refreshing, closing the tab, or navigating away loses everything (state
   // is in-memory only, no autosave) — warn while there's undo history to lose.
@@ -389,6 +398,10 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
         pageOrder={state.pageOrder}
         dispatch={dispatch}
         onClose={() => setPageDrawerOpen(false)}
+        onNavigateToPage={(originalIndex) => {
+          handleNavigateToPage(originalIndex)
+          setPageDrawerOpen(false)
+        }}
       />
 
       {saveError && (
@@ -422,6 +435,7 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
           geometries={loaded.geometries}
           pageOrder={state.pageOrder}
           dispatch={dispatch}
+          onNavigateToPage={handleNavigateToPage}
         />
         <div ref={scrollRef} className="flex-1 overflow-auto">
           <div className="flex min-w-fit flex-col items-center gap-6 px-8 py-8">

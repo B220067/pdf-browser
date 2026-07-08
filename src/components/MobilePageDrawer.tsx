@@ -16,6 +16,7 @@ interface MobilePageDrawerProps {
   pageOrder: PageEntry[]
   dispatch: Dispatch<HistoryAction>
   onClose: () => void
+  onNavigateToPage: (originalIndex: number) => void
 }
 
 function Thumbnail({
@@ -65,6 +66,7 @@ export function MobilePageDrawer({
   pageOrder,
   dispatch,
   onClose,
+  onNavigateToPage,
 }: MobilePageDrawerProps) {
   const itemRefs = useRef(new Map<number, HTMLDivElement>())
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
@@ -109,6 +111,10 @@ export function MobilePageDrawer({
     setDrag(null)
     if (d.from !== d.over) {
       dispatch({ type: 'REORDER_PAGES', from: d.from, to: d.over })
+    } else {
+      // Released back where it started — this was a tap, not a drag, so
+      // jump the main view to this page (the caller also closes the drawer).
+      onNavigateToPage(pageOrder[d.from].originalIndex)
     }
   }
 

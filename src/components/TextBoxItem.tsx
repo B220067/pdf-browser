@@ -124,125 +124,136 @@ export function TextBoxItem({ el, geometry, scale, selected, dispatch }: TextBox
     >
       {selected && (
         <div
-          className="absolute top-full left-0 mt-2 flex flex-wrap items-center gap-1 rounded-lg bg-slate-900 px-1.5 py-1 text-white shadow-lg"
+          className="absolute top-full left-0 mt-2 flex flex-col gap-1 rounded-lg bg-slate-900 px-1.5 py-1 text-white shadow-lg"
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <span
-            title="Drag to move"
-            className="touch-none cursor-move rounded p-2 text-slate-400 hover:text-white"
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              startDragFromGrip(e)
-            }}
-          >
-            <GripIcon width={20} height={20} />
-          </span>
-          <select
-            value={el.fontFamily}
-            onChange={(e) =>
-              dispatch({
-                type: 'UPDATE_TEXT',
-                id: el.id,
-                patch: { fontFamily: e.target.value as TextElement['fontFamily'] },
-              })
-            }
-            className="rounded bg-slate-800 px-1 py-0.5 text-xs outline-none"
-            aria-label="Font family"
-          >
-            {FONT_FAMILIES.map((f) => (
-              <option key={f} value={f}>
-                {FONT_LABELS[f]}
-              </option>
-            ))}
-          </select>
-          <select
-            value={el.fontSize}
-            onChange={(e) =>
-              dispatch({
-                type: 'UPDATE_TEXT',
-                id: el.id,
-                patch: { fontSize: Number(e.target.value) },
-              })
-            }
-            className="rounded bg-slate-800 px-1 py-0.5 text-xs outline-none"
-            aria-label="Font size"
-          >
-            {FONT_SIZES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <ColorSwatches
-            value={el.color}
-            onChange={(color) => dispatch({ type: 'UPDATE_TEXT', id: el.id, patch: { color } })}
-            size="compact"
-            ariaLabel="Text color"
-          />
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              title="Bold"
-              onClick={() =>
+          {/* Row 1: move handle + font family */}
+          <div className="flex items-center gap-1">
+            <span
+              title="Drag to move"
+              className="touch-none cursor-move rounded p-2 text-slate-400 hover:text-white"
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                startDragFromGrip(e)
+              }}
+            >
+              <GripIcon width={20} height={20} />
+            </span>
+            <select
+              value={el.fontFamily}
+              onChange={(e) =>
                 dispatch({
                   type: 'UPDATE_TEXT',
                   id: el.id,
-                  patch: { bold: !el.bold },
+                  patch: { fontFamily: e.target.value as TextElement['fontFamily'] },
                 })
               }
-              className={`rounded p-1.5 transition-colors ${
-                el.bold
-                  ? 'bg-sky-500 text-white'
-                  : 'text-slate-400 hover:bg-slate-700 hover:text-white'
-              }`}
+              className="min-w-0 flex-1 rounded bg-slate-800 px-1 py-0.5 text-xs outline-none"
+              aria-label="Font family"
             >
-              <BoldIcon width={16} height={16} />
-            </button>
-            <button
-              type="button"
-              title="Italic"
-              onClick={() =>
+              {FONT_FAMILIES.map((f) => (
+                <option key={f} value={f}>
+                  {FONT_LABELS[f]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Row 2: colors + font size */}
+          <div className="flex items-center gap-1">
+            <ColorSwatches
+              value={el.color}
+              onChange={(color) => dispatch({ type: 'UPDATE_TEXT', id: el.id, patch: { color } })}
+              size="compact"
+              ariaLabel="Text color"
+            />
+            <select
+              value={el.fontSize}
+              onChange={(e) =>
                 dispatch({
                   type: 'UPDATE_TEXT',
                   id: el.id,
-                  patch: { italic: !el.italic },
+                  patch: { fontSize: Number(e.target.value) },
                 })
               }
-              className={`rounded p-1.5 transition-colors ${
-                el.italic
-                  ? 'bg-sky-500 text-white'
-                  : 'text-slate-400 hover:bg-slate-700 hover:text-white'
-              }`}
+              className="rounded bg-slate-800 py-0.5 pl-1 pr-2 text-xs outline-none"
+              aria-label="Font size"
             >
-              <ItalicIcon width={16} height={16} />
-            </button>
+              {FONT_SIZES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Row 3: bold/italic/underline + delete */}
+          <div className="flex items-center justify-between gap-1">
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                title="Bold"
+                onClick={() =>
+                  dispatch({
+                    type: 'UPDATE_TEXT',
+                    id: el.id,
+                    patch: { bold: !el.bold },
+                  })
+                }
+                className={`rounded p-1.5 transition-colors ${
+                  el.bold
+                    ? 'bg-sky-500 text-white'
+                    : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <BoldIcon width={16} height={16} />
+              </button>
+              <button
+                type="button"
+                title="Italic"
+                onClick={() =>
+                  dispatch({
+                    type: 'UPDATE_TEXT',
+                    id: el.id,
+                    patch: { italic: !el.italic },
+                  })
+                }
+                className={`rounded p-1.5 transition-colors ${
+                  el.italic
+                    ? 'bg-sky-500 text-white'
+                    : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <ItalicIcon width={16} height={16} />
+              </button>
+              <button
+                type="button"
+                title="Underline"
+                onClick={() =>
+                  dispatch({
+                    type: 'UPDATE_TEXT',
+                    id: el.id,
+                    patch: { underline: !el.underline },
+                  })
+                }
+                className={`rounded p-1.5 transition-colors ${
+                  el.underline
+                    ? 'bg-sky-500 text-white'
+                    : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <UnderlineIcon width={16} height={16} />
+              </button>
+            </div>
             <button
               type="button"
-              title="Underline"
-              onClick={() =>
-                dispatch({
-                  type: 'UPDATE_TEXT',
-                  id: el.id,
-                  patch: { underline: !el.underline },
-                })
-              }
-              className={`rounded p-1.5 transition-colors ${
-                el.underline
-                  ? 'bg-sky-500 text-white'
-                  : 'text-slate-400 hover:bg-slate-700 hover:text-white'
-              }`}
+              title="Delete text box"
+              onClick={() => dispatch({ type: 'REMOVE_TEXT', id: el.id })}
+              className="rounded p-1 text-slate-400 hover:bg-red-500/20 hover:text-red-400"
             >
-              <UnderlineIcon width={16} height={16} />
+              <TrashIcon />
             </button>
           </div>
-          <button
-            type="button"
-            title="Delete text box"
-            onClick={() => dispatch({ type: 'REMOVE_TEXT', id: el.id })}
-            className="rounded p-1 text-slate-400 hover:bg-red-500/20 hover:text-red-400"
-          >
-            <TrashIcon />
-          </button>
         </div>
       )}
 
