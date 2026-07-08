@@ -1,15 +1,12 @@
 import { useCallback, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
+import { isPdf } from '../lib/isPdf'
 import { mergePdfs, UnmergeableFileError } from '../lib/mergePdfs'
 import { downloadBytes } from '../lib/savePdf'
 import { LogoMark, TrashIcon } from './icons'
 
 interface MergePdfsProps {
   onBack: () => void
-}
-
-function isPdf(file: File): boolean {
-  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
 }
 
 export function MergePdfs({ onBack }: MergePdfsProps) {
@@ -75,13 +72,16 @@ export function MergePdfs({ onBack }: MergePdfsProps) {
               Inks<span className="text-ink-600">PDF</span>
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onBack}
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault()
+              onBack()
+            }}
             className="text-sm font-medium text-slate-500 transition-colors hover:text-sky-600"
           >
             ← Back
-          </button>
+          </a>
         </div>
       </nav>
 

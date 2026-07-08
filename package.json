@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "postbuild": "cp dist/index.html dist/404.html && mkdir -p dist/merge dist/split dist/watermark && cp dist/index.html dist/merge/index.html && cp dist/index.html dist/split/index.html && cp dist/index.html dist/watermark/index.html",
     "preview": "vite preview"
   },
   "dependencies": {

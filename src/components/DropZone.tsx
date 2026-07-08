@@ -1,10 +1,13 @@
 import { useCallback, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
+import { isPdf } from '../lib/isPdf'
 import { EyeOffIcon, ExpandIcon, ExternalLinkIcon, FileIcon, LockIcon, LogoMark, ZapIcon } from './icons'
 
 interface DropZoneProps {
   onFile: (bytes: ArrayBuffer, name: string) => void
   onMergeClick: () => void
+  onSplitClick: () => void
+  onWatermarkClick: () => void
 }
 
 const SOURCE_URL = 'https://github.com/B220067/pdf-browser'
@@ -38,11 +41,7 @@ const HOW_IT_WORKS = [
   { step: '3', title: 'Download', desc: 'Save your finished PDF, ready to share or print.' },
 ]
 
-function isPdf(file: File): boolean {
-  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
-}
-
-export function DropZone({ onFile, onMergeClick }: DropZoneProps) {
+export function DropZone({ onFile, onMergeClick, onSplitClick, onWatermarkClick }: DropZoneProps) {
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -198,15 +197,38 @@ export function DropZone({ onFile, onMergeClick }: DropZoneProps) {
               </p>
             )}
 
-            <div className="mt-6 flex flex-col items-center gap-3 text-center sm:flex-row sm:gap-4">
-              <p className="text-sm text-slate-500">Need to combine multiple PDFs?</p>
-              <button
-                type="button"
-                onClick={onMergeClick}
+            <div className="mt-6 flex flex-col items-center gap-3 text-center sm:flex-row sm:flex-wrap sm:gap-2">
+              <p className="text-sm text-slate-500">More tools:</p>
+              <a
+                href="/merge"
+                onClick={(e) => {
+                  e.preventDefault()
+                  onMergeClick()
+                }}
                 className="rounded-lg bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-ink-800"
               >
                 Merge PDFs
-              </button>
+              </a>
+              <a
+                href="/split"
+                onClick={(e) => {
+                  e.preventDefault()
+                  onSplitClick()
+                }}
+                className="rounded-lg bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-ink-800"
+              >
+                Split PDF
+              </a>
+              <a
+                href="/watermark"
+                onClick={(e) => {
+                  e.preventDefault()
+                  onWatermarkClick()
+                }}
+                className="rounded-lg bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-ink-800"
+              >
+                Watermark &amp; Numbers
+              </a>
             </div>
           </div>
         </div>
