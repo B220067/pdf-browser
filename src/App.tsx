@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { DropZone } from './components/DropZone'
 import { MergePdfs } from './components/MergePdfs'
 import { PdfEditor } from './components/PdfEditor'
+import { PrivacyPolicy } from './components/PrivacyPolicy'
 import { SplitPdf } from './components/SplitPdf'
+import { TermsOfUse } from './components/TermsOfUse'
 import { WatermarkPdf } from './components/WatermarkPdf'
 
 interface LoadedFile {
@@ -12,7 +14,7 @@ interface LoadedFile {
   name: string
 }
 
-export type Screen = 'home' | 'merge' | 'split' | 'watermark'
+export type Screen = 'home' | 'merge' | 'split' | 'watermark' | 'terms' | 'privacy'
 
 /** Each tool gets a real, bookmarkable, indexable URL — not just in-memory state. */
 const PATH_TO_SCREEN: Record<string, Screen> = {
@@ -20,12 +22,16 @@ const PATH_TO_SCREEN: Record<string, Screen> = {
   '/merge': 'merge',
   '/split': 'split',
   '/watermark': 'watermark',
+  '/terms': 'terms',
+  '/privacy': 'privacy',
 }
 export const SCREEN_TO_PATH: Record<Screen, string> = {
   home: '/',
   merge: '/merge',
   split: '/split',
   watermark: '/watermark',
+  terms: '/terms',
+  privacy: '/privacy',
 }
 
 const SEO: Record<Screen, { title: string; description: string }> = {
@@ -48,6 +54,14 @@ const SEO: Record<Screen, { title: string; description: string }> = {
     title: 'Add watermark & page numbers to a PDF — InksPDF',
     description:
       'Stamp a text watermark and page numbers across every page of a PDF, entirely in your browser. No upload, no signup.',
+  },
+  terms: {
+    title: 'Terms of Use — InksPDF',
+    description: 'The terms for using InksPDF.',
+  },
+  privacy: {
+    title: 'Privacy Policy — InksPDF',
+    description: 'How InksPDF handles (or rather, never handles) your files and data.',
   },
 }
 
@@ -116,6 +130,8 @@ export default function App() {
   if (screen === 'merge') return <MergePdfs onBack={goBack} />
   if (screen === 'split') return <SplitPdf onBack={goBack} />
   if (screen === 'watermark') return <WatermarkPdf onBack={goBack} />
+  if (screen === 'terms') return <TermsOfUse onBack={goBack} />
+  if (screen === 'privacy') return <PrivacyPolicy onBack={goBack} />
 
   return (
     <DropZone
@@ -123,6 +139,8 @@ export default function App() {
       onMergeClick={() => navigate('merge')}
       onSplitClick={() => navigate('split')}
       onWatermarkClick={() => navigate('watermark')}
+      onTermsClick={() => navigate('terms')}
+      onPrivacyClick={() => navigate('privacy')}
     />
   )
 }

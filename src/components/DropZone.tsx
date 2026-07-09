@@ -1,16 +1,16 @@
 import { useCallback, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { isPdf } from '../lib/isPdf'
-import { EyeOffIcon, ExpandIcon, ExternalLinkIcon, FileIcon, LockIcon, LogoMark, ZapIcon } from './icons'
+import { EyeOffIcon, ExpandIcon, FileIcon, LockIcon, LogoMark, ZapIcon } from './icons'
 
 interface DropZoneProps {
   onFile: (bytes: ArrayBuffer, name: string) => void
   onMergeClick: () => void
   onSplitClick: () => void
   onWatermarkClick: () => void
+  onTermsClick: () => void
+  onPrivacyClick: () => void
 }
-
-const SOURCE_URL = 'https://github.com/B220067/pdf-browser'
 
 const TRUST_BADGES = [
   {
@@ -41,7 +41,14 @@ const HOW_IT_WORKS = [
   { step: '3', title: 'Download', desc: 'Save your finished PDF, ready to share or print.' },
 ]
 
-export function DropZone({ onFile, onMergeClick, onSplitClick, onWatermarkClick }: DropZoneProps) {
+export function DropZone({
+  onFile,
+  onMergeClick,
+  onSplitClick,
+  onWatermarkClick,
+  onTermsClick,
+  onPrivacyClick,
+}: DropZoneProps) {
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -79,22 +86,13 @@ export function DropZone({ onFile, onMergeClick, onSplitClick, onWatermarkClick 
   return (
     <div className="min-h-screen bg-slate-100">
       <nav className="animate-fade-up border-b border-slate-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
           <div className="flex items-center gap-2">
             <LogoMark width={28} height={28} className="rounded-md" />
             <span className="font-display text-lg tracking-tight text-slate-900">
               Inks<span className="text-ink-600">PDF</span>
             </span>
           </div>
-          <a
-            href={SOURCE_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-sky-600"
-          >
-            View source
-            <ExternalLinkIcon width={14} height={14} />
-          </a>
         </div>
       </nav>
 
@@ -247,7 +245,29 @@ export function DropZone({ onFile, onMergeClick, onSplitClick, onWatermarkClick 
       </main>
 
       <footer className="border-t border-slate-200 py-8 text-center text-xs text-slate-400">
-        InksPDF — zero servers, zero tracking, zero cost.
+        <p>© {new Date().getFullYear()} InksPDF. All rights reserved.</p>
+        <div className="mt-2 flex items-center justify-center gap-4">
+          <a
+            href="/terms"
+            onClick={(e) => {
+              e.preventDefault()
+              onTermsClick()
+            }}
+            className="hover:text-slate-600 hover:underline"
+          >
+            Terms of Use
+          </a>
+          <a
+            href="/privacy"
+            onClick={(e) => {
+              e.preventDefault()
+              onPrivacyClick()
+            }}
+            className="hover:text-slate-600 hover:underline"
+          >
+            Privacy Policy
+          </a>
+        </div>
       </footer>
     </div>
   )
