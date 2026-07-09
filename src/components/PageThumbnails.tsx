@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Dispatch, PointerEvent as ReactPointerEvent } from 'react'
+import type { Dispatch, PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import type { PDFPageProxy } from 'pdfjs-dist'
 import { RenderingCancelledException } from 'pdfjs-dist'
 import type { HistoryAction } from '../lib/editorState'
@@ -22,15 +22,42 @@ function Thumbnail({
   rotationDelta,
   width,
   height,
+  scrollRootRef,
 }: {
   page: PDFPageProxy
   rotationDelta: 0 | 90 | 180 | 270
   width: number
   height: number
+  /** The sidebar's own scroll container — IntersectionObserver needs this as
+   * `root` since these thumbnails scroll within the sidebar, not the window. */
+  scrollRootRef: RefObject<HTMLElement | null>
 }) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Windowed rendering: with hundreds of pages, rendering every thumbnail
+  // canvas up front on load causes a real, noticeable freeze. Only render
+  // once a thumbnail is about to scroll into view, same lazy pattern PdfPage
+  // already uses for the main page canvases.
+  const [nearViewport, setNearViewport] = useState(false)
 
   useEffect(() => {
+    const el = wrapperRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setNearViewport(true)
+          observer.disconnect()
+        }
+      },
+      { root: scrollRootRef.current, rootMargin: '150% 0%' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [scrollRootRef])
+
+  useEffect(() => {
+    if (!nearViewport) return
     const canvas = canvasRef.current
     if (!canvas) return
     const scale = THUMB_WIDTH / width
@@ -45,15 +72,21 @@ function Thumbnail({
       if (!(err instanceof RenderingCancelledException)) console.error(err)
     })
     return () => task.cancel()
-  }, [page, rotationDelta, width])
+  }, [page, rotationDelta, width, nearViewport])
+
+  const displayHeight = (height / width) * THUMB_WIDTH
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="pointer-events-none block bg-white"
-      style={{ width: THUMB_WIDTH, height: (height / width) * THUMB_WIDTH }}
-      aria-hidden
-    />
+    <div ref={wrapperRef} style={{ width: THUMB_WIDTH, height: displayHeight }} className="bg-white">
+      {nearViewport && (
+        <canvas
+          ref={canvasRef}
+          className="pointer-events-none block"
+          style={{ width: THUMB_WIDTH, height: displayHeight }}
+          aria-hidden
+        />
+      )}
+    </div>
   )
 }
 
@@ -70,6 +103,7 @@ export function PageThumbnails({
   onNavigateToPage,
 }: PageThumbnailsProps) {
   const itemRefs = useRef(new Map<number, HTMLDivElement>())
+  const scrollRootRef = useRef<HTMLElement | null>(null)
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
   const dragRef = useRef<{ pointerId: number; from: number; over: number } | null>(null)
 
@@ -120,7 +154,12 @@ export function PageThumbnails({
   }
 
   return (
-    <aside className="hidden w-40 shrink-0 overflow-y-auto border-r border-slate-300 bg-slate-100 p-3 md:block">
+    <aside
+      ref={(el) => {
+        scrollRootRef.current = el
+      }}
+      className="hidden w-40 shrink-0 overflow-y-auto border-r border-slate-300 bg-slate-100 p-3 md:block"
+    >
       <div className="flex flex-col gap-3">
         {pageOrder.map((entry, index) => {
           const base = geometries[entry.originalIndex]
@@ -165,6 +204,7 @@ export function PageThumbnails({
                     rotationDelta={entry.rotationDelta}
                     width={geom.width}
                     height={geom.height}
+                    scrollRootRef={scrollRootRef}
                   />
                 </div>
                 <div className="mt-1 flex items-center justify-between">
