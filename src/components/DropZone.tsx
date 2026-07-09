@@ -84,7 +84,7 @@ export function DropZone({
   )
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="flex min-h-screen flex-col bg-slate-100">
       <nav className="animate-fade-up border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
           <div className="flex items-center gap-2">
@@ -96,7 +96,7 @@ export function DropZone({
         </div>
       </nav>
 
-      <main className="mx-auto max-w-6xl px-6 py-16">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center lg:gap-16">
           <div className="animate-fade-up [animation-delay:80ms]">
             <h1 className="font-display text-4xl text-balance text-slate-900 sm:text-5xl">
@@ -164,7 +164,7 @@ export function DropZone({
                 if (dragDepth.current <= 0) setDragging(false)
               }}
               onDrop={onDrop}
-              className={`flex w-full cursor-pointer flex-col items-center gap-4 rounded-2xl border-2 border-dashed p-14 text-center shadow-sm transition-colors ${
+              className={`flex w-full cursor-pointer flex-col items-center gap-4 rounded-2xl border-2 border-dashed p-10 text-center shadow-sm transition-colors ${
                 dragging
                   ? 'border-sky-500 bg-sky-50'
                   : 'border-slate-300 bg-white hover:border-sky-400 hover:bg-sky-50/50'
@@ -231,7 +231,7 @@ export function DropZone({
           </div>
         </div>
 
-        <div className="animate-fade-up mt-24 grid gap-10 [animation-delay:240ms] sm:grid-cols-3 sm:gap-8">
+        <div className="animate-fade-up mt-12 grid gap-10 [animation-delay:240ms] sm:grid-cols-3 sm:gap-8">
           {HOW_IT_WORKS.map(({ step, title, desc }) => (
             <div key={step}>
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-900 text-sm font-semibold text-white">
