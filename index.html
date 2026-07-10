@@ -2,6 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Content-Security-Policy, delivered via meta tag since GitHub Pages can't
+      set custom HTTP response headers. Locked to same-origin for everything
+      except style-src, which needs 'unsafe-inline' for React's inline
+      style={{}} positioning (draggable text boxes, ink strokes, etc.).
+      Note: frame-ancestors/report-uri/sandbox are ignored when CSP is
+      delivered this way — the browser only honors them from a real header.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
