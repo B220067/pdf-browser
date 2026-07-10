@@ -8,20 +8,34 @@ import {
   LineCapStyle,
   degrees,
   rgb,
+  PDFArray,
+  PDFContentStream,
+  PDFDict,
+  PDFName,
+  PDFRawStream,
+  PDFRef,
+  PDFStream,
+  decodePDFRawStream,
   type PDFFont,
+  type PDFObject,
   type PDFPage,
 } from 'pdf-lib'
+import { TextLayer } from 'pdfjs-dist'
+import type { PDFPageProxy } from 'pdfjs-dist'
 import type {
   FontFamily,
   FormFieldValue,
   PageEntry,
   PageGeometry,
+  RedactionBox,
   Stroke,
   TextElement,
 } from '../types'
 import greatVibesUrl from '../assets/GreatVibes-Regular.ttf?url'
 import { LINE_HEIGHT } from '../types'
 import { displayedToPdf, effectiveGeometry, hexToRgb01, normalizeRotation } from './coords'
+import { loadPdf } from './pdfjs'
+import { findTextShowingOperations, removeByteRanges, type TextShowingOp } from './redactContentStream'
 import { strokeToSvgPath } from './smoothing'
 
 const STANDARD_FONT_MAP: Partial<Record<FontFamily, StandardFonts>> = {
@@ -184,6 +198,7 @@ export async function exportEditedPdf(
   strokes: readonly Stroke[],
   pageOrder?: readonly PageEntry[],
   formValues?: Record<string, FormFieldValue>,
+  redactions?: readonly RedactionBox[],
 ): Promise<Uint8Array> {
   const srcDoc = await PDFDocument.load(originalBytes, { ignoreEncryption: true })
   if (srcDoc.isEncrypted) throw new EncryptedPdfError()
@@ -306,7 +321,398 @@ export async function exportEditedPdf(
     }
   }
 
+  if (redactions && redactions.length > 0) {
+    await applyRedactions(doc, slots, redactions)
+  }
+
   return doc.save()
+}
+
+/** Raster resolution for redacted pages: 72 * 3 = 216 DPI — sharp enough for
+ *  print/zoom while keeping file size and render time reasonable. */
+const REDACTION_RASTER_SCALE = 3
+
+function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Failed to rasterize page for redaction'))
+        return
+      }
+      blob
+        .arrayBuffer()
+        .then((buf) => resolve(new Uint8Array(buf)))
+        .catch(reject)
+    }, 'image/png')
+  })
+}
+
+interface DisplayBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+function boxesOverlap(a: DisplayBox, b: DisplayBox): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+}
+
+/** Map a displayed-space rect (top-left origin, y-down) to a structural PDF
+ *  rect (bottom-left origin, y-up) via both diagonal corners — exact for the
+ *  rotation=0 case this is only ever called in (see the rotation guard in
+ *  `tryPreciseRedaction`). */
+function displayRectToStructural(b: DisplayBox, geom: PageGeometry): DisplayBox {
+  const c1 = displayedToPdf({ x: b.x, y: b.y }, geom)
+  const c2 = displayedToPdf({ x: b.x + b.width, y: b.y + b.height }, geom)
+  return {
+    x: Math.min(c1.x, c2.x),
+    y: Math.min(c1.y, c2.y),
+    width: Math.abs(c2.x - c1.x),
+    height: Math.abs(c2.y - c1.y),
+  }
+}
+
+/** True if any XObject in the page's /Resources is an Image — used as a
+ *  conservative "too complex, don't attempt precise redaction" signal, since
+ *  an image under a redaction box needs the same removal this pass only does
+ *  for text; see the module doc comment on `tryPreciseRedaction`. */
+function pageHasImageXObject(doc: PDFDocument, page: PDFPage): boolean {
+  const resources = page.node.Resources()
+  const xobjects = resources?.lookupMaybe(PDFName.of('XObject'), PDFDict)
+  if (!xobjects) return false
+  for (const value of xobjects.values()) {
+    const obj: PDFObject | undefined = value instanceof PDFRef ? doc.context.lookup(value) : value
+    const dict = obj instanceof PDFDict ? obj : obj instanceof PDFStream ? obj.dict : undefined
+    if (dict?.lookupMaybe(PDFName.of('Subtype'), PDFName)?.toString() === '/Image') return true
+  }
+  return false
+}
+
+/**
+ * Read a page's full content-stream bytes, decoded and concatenated in
+ * order (a PDF page's /Contents may be a single stream or an array of them —
+ * readers treat an array as logically concatenated, so this does too).
+ * Returns null if any entry isn't a stream type this can decode, which the
+ * caller treats as "too complex, fall back to rasterizing the page."
+ */
+function readPageContentBytes(doc: PDFDocument, page: PDFPage): Uint8Array | null {
+  const contents = page.node.Contents()
+  if (!contents) return new Uint8Array(0)
+
+  const entries: PDFObject[] = []
+  if (contents instanceof PDFArray) {
+    for (let i = 0; i < contents.size(); i++) {
+      const ref = contents.get(i)
+      const obj = ref instanceof PDFRef ? doc.context.lookup(ref) : ref
+      if (!obj) return null
+      entries.push(obj)
+    }
+  } else {
+    entries.push(contents)
+  }
+
+  const chunks: Uint8Array[] = []
+  for (const entry of entries) {
+    if (entry instanceof PDFContentStream) chunks.push(entry.getUnencodedContents())
+    else if (entry instanceof PDFRawStream) chunks.push(decodePDFRawStream(entry).decode())
+    else return null
+  }
+
+  const total = chunks.reduce((sum, c) => sum + c.length + 1, 0)
+  const out = new Uint8Array(total)
+  let pos = 0
+  for (const c of chunks) {
+    out.set(c, pos)
+    pos += c.length
+    out[pos] = 0x20 // PDF requires content streams to be joined as if by whitespace
+    pos += 1
+  }
+  return out.subarray(0, pos)
+}
+
+/** Replace a page's /Contents with a single new (uncompressed) stream holding `bytes`. */
+function writePageContentBytes(doc: PDFDocument, page: PDFPage, bytes: Uint8Array): void {
+  const stream = doc.context.stream(bytes)
+  const ref = doc.context.register(stream)
+  page.node.set(PDFName.of('Contents'), ref)
+}
+
+/**
+ * Render the page's text layer off-screen (same pdf.js `TextLayer` class the
+ * live editor uses for the highlighter) purely to measure each REAL text
+ * item's on-page bounding box via `getBoundingClientRect()` — far more
+ * reliable than re-deriving pdf.js's glyph-transform math by hand.
+ *
+ * pdf.js's `getTextContent()` doesn't emit one item per content-stream
+ * text-showing operation — it also inserts synthetic items of its own: an
+ * empty-string item as an internal line-break marker (which `TextLayer`
+ * silently renders no span for at all), and whitespace-only items to
+ * represent an inferred gap between two separately-positioned operations
+ * that weren't actually a space character in the stream. Both are filtered
+ * out here (by re-aligning items 1:1 with rendered spans first, since only
+ * the empty-string case drops a span; then dropping whitespace-only entries
+ * from both in lockstep) so what's left is exactly the real operations, in
+ * order — which is what the caller needs to line up against its own count
+ * of real `Tj`/`TJ` operations found in the raw content stream.
+ *
+ * Returns null if the span/item counts can't be reconciled at all, which
+ * the caller treats as "not confident enough to attempt precise redaction."
+ */
+async function measureTextItemBoxes(pjsPage: PDFPageProxy, width: number, height: number): Promise<DisplayBox[] | null> {
+  const textContent = await pjsPage.getTextContent()
+  const viewport = pjsPage.getViewport({ scale: 1 })
+  const container = document.createElement('div')
+  container.className = 'textLayer'
+  container.style.position = 'fixed'
+  container.style.left = '0px'
+  container.style.top = '0px'
+  container.style.visibility = 'hidden'
+  container.style.fontSize = '0'
+  container.style.setProperty('--total-scale-factor', '1')
+  // pdf.js's TextLayer constructor sets the container's width/height itself,
+  // to `round(down, calc(var(--total-scale-factor) * <page size>), var(--scale-round-x))`.
+  // Without these two custom properties (normally supplied by pdf.js's own
+  // pdf_viewer.css, which this app deliberately doesn't import — see the
+  // comment on the `.textLayer` rule in index.css) that `round()` is
+  // invalid, and the container collapses to 0×0 — every span still renders
+  // and sizes correctly, but every position ends up wrongly reported as
+  // (0,0) relative to it. Match pdf_viewer.css's own values.
+  container.style.setProperty('--scale-round-x', '1px')
+  container.style.setProperty('--scale-round-y', '1px')
+  document.body.appendChild(container)
+  try {
+    const task = new TextLayer({ textContentSource: textContent, container, viewport })
+    await task.render()
+    const spans = container.querySelectorAll('span')
+
+    const nonEmptyItems = textContent.items.filter(
+      (it): it is typeof it & { str: string } => 'str' in it && it.str !== '',
+    )
+    if (nonEmptyItems.length !== spans.length) return null
+
+    const containerRect = container.getBoundingClientRect()
+    if (containerRect.width !== width || containerRect.height !== height) return null
+    const boxes: DisplayBox[] = []
+    for (let i = 0; i < nonEmptyItems.length; i++) {
+      if (nonEmptyItems[i].str.trim() === '') continue // synthetic inferred-gap space, not a real operation
+      const r = spans[i].getBoundingClientRect()
+      boxes.push({ x: r.left - containerRect.left, y: r.top - containerRect.top, width: r.width, height: r.height })
+    }
+    return boxes
+  } finally {
+    document.body.removeChild(container)
+  }
+}
+
+/** Padding (displayed-space points) added around a removed item's crop so
+ *  its raster patch overlaps neighboring untouched text slightly rather than
+ *  leaving a hairline seam — safe since the patch shows real page pixels
+ *  outside the redaction box, identical to what's already there. */
+const PATCH_PADDING = 2
+
+/**
+ * Attempt word-level redaction: delete only the specific text-showing
+ * operations that overlap a redaction box, leaving every other operation in
+ * the page's content stream — and therefore every other word, line, and
+ * paragraph on the page — exactly as it was, still real and selectable.
+ *
+ * This only proceeds when every one of several independent checks confirms
+ * it's safe to trust:
+ *  - the page has no image XObjects (an image under a box needs removal too,
+ *    which this pass doesn't attempt — bail rather than leave it recoverable)
+ *  - the content stream tokenizes cleanly (no inline images, no malformed
+ *    syntax — see redactContentStream.ts)
+ *  - the number of text-showing operations found in the raw bytes matches
+ *    pdf.js's own independently-computed text item count for the page, AND
+ *    matches the number of rendered text-layer spans — two separate
+ *    consistency checks that only both pass when the "Nth operation is the
+ *    Nth item" assumption this relies on actually holds for this page
+ *  - the page isn't rotated (kept out of scope for this pass — see the
+ *    module's design notes on image placement math)
+ *
+ * Any failure returns false and leaves `doc` completely untouched, so the
+ * caller's whole-page rasterization fallback — the same one used before this
+ * function existed — applies instead. Nothing here weakens that guarantee;
+ * it only widens the set of pages that can avoid it.
+ *
+ * A removed run isn't just deleted outright: since the user's box may only
+ * cover part of it (e.g. a box reaching partway through a word), the run's
+ * full original pixels are rasterized into a small local patch with just the
+ * boxed portion baked solid black, so anything outside the box still looks
+ * exactly as before — it just stops being real text, same as the rest of a
+ * whole-page fallback would.
+ */
+async function tryPreciseRedaction(
+  doc: PDFDocument,
+  page: PDFPage,
+  pjsPage: PDFPageProxy,
+  geom: PageGeometry,
+  boxes: readonly RedactionBox[],
+  pageCanvas: HTMLCanvasElement,
+): Promise<boolean> {
+  if (geom.rotation !== 0) return false
+  if (pageHasImageXObject(doc, page)) return false
+
+  const contentBytes = readPageContentBytes(doc, page)
+  if (!contentBytes) return false
+
+  const textOps = findTextShowingOperations(contentBytes)
+  if (!textOps) return false
+
+  const itemBoxes = await measureTextItemBoxes(pjsPage, geom.width, geom.height)
+  if (!itemBoxes) return false
+  if (itemBoxes.length !== textOps.length) return false
+
+  const opsToRemove: TextShowingOp[] = []
+  const removedItemBoxes: DisplayBox[] = []
+  for (let idx = 0; idx < textOps.length; idx++) {
+    const itemBox = itemBoxes[idx]
+    if (itemBox.width <= 0 || itemBox.height <= 0) continue
+    if (boxes.some((b) => boxesOverlap(itemBox, b))) {
+      opsToRemove.push(textOps[idx])
+      removedItemBoxes.push(itemBox)
+    }
+  }
+
+  // Every check passed — now safe to actually mutate the document.
+  const newContentBytes = removeByteRanges(contentBytes, opsToRemove)
+  writePageContentBytes(doc, page, newContentBytes)
+
+  // Full box coverage first (handles any part of a box not explained by a
+  // removed run — blank margin, decorative graphics, etc).
+  for (const b of boxes) {
+    const s = displayRectToStructural(b, geom)
+    page.drawRectangle({ x: s.x, y: s.y, width: s.width, height: s.height, color: rgb(0, 0, 0) })
+  }
+
+  // Then patch each removed run back in as pixels: real page content outside
+  // any box, solid black inside one — so the parts the box never touched
+  // still look untouched, just no longer selectable as text.
+  for (const itemBox of removedItemBoxes) {
+    const crop: DisplayBox = {
+      x: Math.max(0, itemBox.x - PATCH_PADDING),
+      y: Math.max(0, itemBox.y - PATCH_PADDING),
+      width: Math.min(geom.width, itemBox.x + itemBox.width + PATCH_PADDING) - Math.max(0, itemBox.x - PATCH_PADDING),
+      height:
+        Math.min(geom.height, itemBox.y + itemBox.height + PATCH_PADDING) - Math.max(0, itemBox.y - PATCH_PADDING),
+    }
+    if (crop.width <= 0 || crop.height <= 0) continue
+
+    const srcX = Math.round(crop.x * REDACTION_RASTER_SCALE)
+    const srcY = Math.round(crop.y * REDACTION_RASTER_SCALE)
+    const srcW = Math.round(crop.width * REDACTION_RASTER_SCALE)
+    const srcH = Math.round(crop.height * REDACTION_RASTER_SCALE)
+    if (srcW <= 0 || srcH <= 0) continue
+
+    const patchCanvas = document.createElement('canvas')
+    patchCanvas.width = srcW
+    patchCanvas.height = srcH
+    const patchCtx = patchCanvas.getContext('2d')
+    if (!patchCtx) continue
+    patchCtx.drawImage(pageCanvas, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH)
+
+    patchCtx.fillStyle = '#000000'
+    for (const b of boxes) {
+      if (!boxesOverlap(crop, b)) continue
+      const localX = (b.x - crop.x) * REDACTION_RASTER_SCALE
+      const localY = (b.y - crop.y) * REDACTION_RASTER_SCALE
+      patchCtx.fillRect(localX, localY, b.width * REDACTION_RASTER_SCALE, b.height * REDACTION_RASTER_SCALE)
+    }
+
+    const pngBytes = await canvasToPngBytes(patchCanvas)
+    const image = await doc.embedPng(pngBytes)
+    const s = displayRectToStructural(crop, geom)
+    page.drawImage(image, { x: s.x, y: s.y, width: s.width, height: s.height })
+  }
+
+  return true
+}
+
+/**
+ * Permanently remove redacted content. For every page carrying at least one
+ * redaction box, first try `tryPreciseRedaction` (removes only the specific
+ * words a box touches, leaving the rest of the page as real text). If that
+ * declines — anything about the page it isn't confident about — fall back to
+ * rasterizing the whole page: paint the boxes onto a full-page raster of
+ * everything already drawn (all other edits are baked in by the loop above,
+ * so it matches exactly what's on screen), then replace the page's entire
+ * vector content with that flattened image.
+ *
+ * Either way, this is the only reliable way to guarantee the underlying
+ * text is actually gone from the saved file. Drawing a black rectangle over
+ * live content (what `highlight` does) leaves the original text intact and
+ * trivially extractable via copy-paste or a text-extraction tool.
+ */
+async function applyRedactions(
+  doc: PDFDocument,
+  slots: { page: PDFPage; originalIndex: number; geom: PageGeometry }[],
+  redactions: readonly RedactionBox[],
+): Promise<void> {
+  const byPage = new Map<number, RedactionBox[]>()
+  for (const r of redactions) {
+    if (r.width <= 0 || r.height <= 0) continue
+    const list = byPage.get(r.pageIndex)
+    if (list) list.push(r)
+    else byPage.set(r.pageIndex, [r])
+  }
+  if (byPage.size === 0) return
+
+  // Re-open what's been written so far (text/strokes/forms already drawn
+  // onto `doc`'s pages) so the rasterized page matches the live preview,
+  // boxes and all.
+  const intermediate = await doc.save()
+  const buffer = intermediate.buffer.slice(
+    intermediate.byteOffset,
+    intermediate.byteOffset + intermediate.byteLength,
+  ) as ArrayBuffer
+  const pdfjsDoc = await loadPdf(buffer)
+
+  try {
+    // Each whole-page-fallback iteration replaces exactly one page in `doc`
+    // (insert + remove nets to zero length change at that same index), so
+    // indices for every OTHER slot stay valid regardless of processing
+    // order. The precise path never changes the page count either.
+    for (let i = 0; i < slots.length; i++) {
+      const { originalIndex, geom, page } = slots[i]
+      const boxes = byPage.get(originalIndex)
+      if (!boxes || boxes.length === 0) continue
+
+      const pjsPage = await pdfjsDoc.getPage(i + 1)
+      const viewport = pjsPage.getViewport({ scale: REDACTION_RASTER_SCALE })
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.ceil(viewport.width)
+      canvas.height = Math.ceil(viewport.height)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) continue
+      await pjsPage.render({ canvas, viewport }).promise
+
+      const precise = await tryPreciseRedaction(doc, page, pjsPage, geom, boxes, canvas)
+      if (precise) continue
+
+      // Box coordinates are in the same "displayed page space" this render
+      // uses at scale 1 (see coords.ts), so scaling by REDACTION_RASTER_SCALE
+      // lands exactly on the matching canvas pixels.
+      ctx.fillStyle = '#000000'
+      for (const box of boxes) {
+        ctx.fillRect(
+          box.x * REDACTION_RASTER_SCALE,
+          box.y * REDACTION_RASTER_SCALE,
+          box.width * REDACTION_RASTER_SCALE,
+          box.height * REDACTION_RASTER_SCALE,
+        )
+      }
+
+      const pngBytes = await canvasToPngBytes(canvas)
+      const image = await doc.embedPng(pngBytes)
+
+      const flatPage = doc.insertPage(i, [geom.width, geom.height])
+      flatPage.drawImage(image, { x: 0, y: 0, width: geom.width, height: geom.height })
+      doc.removePage(i + 1)
+    }
+  } finally {
+    await pdfjsDoc.destroy()
+  }
 }
 
 /** Trigger a client-side download of the given bytes. */

@@ -3,6 +3,7 @@ import type {
   PageEntry,
   PageGeometry,
   Point,
+  RedactionBox,
   SignatureTemplate,
   Stroke,
   TextElement,
@@ -14,9 +15,11 @@ export interface EditorState {
   tool: Tool
   texts: TextElement[]
   strokes: Stroke[]
+  redactions: RedactionBox[]
   selectedTextId: string | null
   /** groupId (stamped signature) or stroke id (hand-drawn) of the selected ink. */
   selectedStrokeKey: string | null
+  selectedRedactionId: string | null
   penColor: string
   penWidth: number
   /** Session-only — drawn once in the signature modal, stamped repeatedly. */
@@ -31,8 +34,10 @@ export const initialEditorState: EditorState = {
   tool: 'select',
   texts: [],
   strokes: [],
+  redactions: [],
   selectedTextId: null,
   selectedStrokeKey: null,
+  selectedRedactionId: null,
   penColor: '#1d4ed8',
   penWidth: 2,
   savedSignature: null,
@@ -53,6 +58,11 @@ export type EditorAction =
   | { type: 'MOVE_STROKES'; key: string; dx: number; dy: number }
   | { type: 'SCALE_STROKES'; key: string; factor: number; originX: number; originY: number }
   | { type: 'REMOVE_STROKES'; key: string }
+  | { type: 'ADD_REDACTION'; box: RedactionBox }
+  | { type: 'MOVE_REDACTION'; id: string; dx: number; dy: number }
+  | { type: 'RESIZE_REDACTION'; id: string; width: number; height: number }
+  | { type: 'REMOVE_REDACTION'; id: string }
+  | { type: 'SELECT_REDACTION'; id: string | null }
   | { type: 'SET_PEN'; color?: string; width?: number }
   | { type: 'SET_SAVED_SIGNATURE'; signature: SignatureTemplate | null }
   | { type: 'STAMP_SIGNATURE'; strokes: Stroke[] }
@@ -74,6 +84,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         tool: action.tool,
         selectedTextId: action.tool === 'select' ? state.selectedTextId : null,
         selectedStrokeKey: action.tool === 'select' ? state.selectedStrokeKey : null,
+        selectedRedactionId: action.tool === 'select' ? state.selectedRedactionId : null,
       }
     case 'ADD_TEXT':
       // Adding a box drops you straight into editing it with the select tool.
@@ -82,6 +93,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         texts: [...state.texts, action.element],
         selectedTextId: action.element.id,
         selectedStrokeKey: null,
+        selectedRedactionId: null,
         tool: 'select',
       }
     case 'UPDATE_TEXT':
@@ -100,6 +112,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...state,
         selectedTextId: action.id,
         selectedStrokeKey: action.id === null ? state.selectedStrokeKey : null,
+        selectedRedactionId: action.id === null ? state.selectedRedactionId : null,
       }
     case 'ADD_STROKE':
       return { ...state, strokes: [...state.strokes, action.stroke] }
@@ -112,6 +125,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...state,
         selectedStrokeKey: action.key,
         selectedTextId: action.key === null ? state.selectedTextId : null,
+        selectedRedactionId: action.key === null ? state.selectedRedactionId : null,
       }
     case 'MOVE_STROKES':
       return {
@@ -149,6 +163,35 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         strokes: state.strokes.filter((s) => !strokeMatches(s, action.key)),
         selectedStrokeKey:
           state.selectedStrokeKey === action.key ? null : state.selectedStrokeKey,
+      }
+    case 'ADD_REDACTION':
+      return { ...state, redactions: [...state.redactions, action.box], selectedRedactionId: action.box.id }
+    case 'MOVE_REDACTION':
+      return {
+        ...state,
+        redactions: state.redactions.map((r) =>
+          r.id === action.id ? { ...r, x: r.x + action.dx, y: r.y + action.dy } : r,
+        ),
+      }
+    case 'RESIZE_REDACTION':
+      return {
+        ...state,
+        redactions: state.redactions.map((r) =>
+          r.id === action.id ? { ...r, width: action.width, height: action.height } : r,
+        ),
+      }
+    case 'REMOVE_REDACTION':
+      return {
+        ...state,
+        redactions: state.redactions.filter((r) => r.id !== action.id),
+        selectedRedactionId: state.selectedRedactionId === action.id ? null : state.selectedRedactionId,
+      }
+    case 'SELECT_REDACTION':
+      return {
+        ...state,
+        selectedRedactionId: action.id,
+        selectedTextId: action.id === null ? state.selectedTextId : null,
+        selectedStrokeKey: action.id === null ? state.selectedStrokeKey : null,
       }
     case 'SET_PEN':
       return {
@@ -199,6 +242,16 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         strokes: state.strokes.map((s) =>
           s.pageIndex === action.originalIndex ? { ...s, points: s.points.map(remap) } : s,
         ),
+        redactions: state.redactions.map((r) => {
+          if (r.pageIndex !== action.originalIndex) return r
+          // Axis-aligned box: remap both diagonal corners and take the new
+          // bounding box — exact for 90°-multiple rotations.
+          const c1 = remap({ x: r.x, y: r.y })
+          const c2 = remap({ x: r.x + r.width, y: r.y + r.height })
+          const minX = Math.min(c1.x, c2.x)
+          const minY = Math.min(c1.y, c2.y)
+          return { ...r, x: minX, y: minY, width: Math.abs(c2.x - c1.x), height: Math.abs(c2.y - c1.y) }
+        }),
       }
     }
     case 'REORDER_PAGES': {
@@ -265,6 +318,10 @@ const CONTENT_ACTIONS = new Set<EditorAction['type']>([
   'ROTATE_PAGE',
   'REORDER_PAGES',
   'SET_FIELD_VALUE',
+  'ADD_REDACTION',
+  'MOVE_REDACTION',
+  'RESIZE_REDACTION',
+  'REMOVE_REDACTION',
 ])
 
 export type HistoryAction = EditorAction | { type: 'UNDO' } | { type: 'REDO' }
@@ -318,7 +375,11 @@ export function historyReducer(history: HistoryState, action: HistoryAction): Hi
           ? `strokes:${action.key}`
           : action.type === 'SCALE_STROKES'
             ? `scale:${action.key}`
-            : null
+            : action.type === 'MOVE_REDACTION'
+              ? `redaction-move:${action.id}`
+              : action.type === 'RESIZE_REDACTION'
+                ? `redaction-resize:${action.id}`
+                : null
   const shouldSnapshot = coalesceKey === null || coalesceKey !== history.coalesceKey
   const present = editorReducer(history.present, action)
 

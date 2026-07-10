@@ -185,6 +185,13 @@ export const HighlighterIcon = (p: IconProps) => (
   </svg>
 )
 
+export const RedactIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M4 5h16v14H4z" strokeDasharray="0" opacity={0.35} />
+    <rect x="7" y="10" width="10" height="5" rx="0.5" fill="currentColor" stroke="none" />
+  </svg>
+)
+
 export const BoldIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <text x="12" y="18" fontSize="18" fontWeight="bold" textAnchor="middle" fill="currentColor">B</text>

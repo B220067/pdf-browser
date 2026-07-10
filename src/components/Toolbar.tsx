@@ -13,6 +13,7 @@ import {
   MinusIcon,
   PenIcon,
   PlusIcon,
+  RedactIcon,
   RedoIcon,
   SignatureIcon,
   TypeIcon,
@@ -30,6 +31,8 @@ interface ToolbarProps {
   zoom: number
   saving: boolean
   pageDrawerOpen: boolean
+  /** Show the one-time "how to redact" popover under the Redact button. */
+  showRedactHint: boolean
   dispatch: Dispatch<HistoryAction>
   onZoom: (factor: number) => void
   onDownload: () => void
@@ -37,6 +40,7 @@ interface ToolbarProps {
   onSignatureClick: () => void
   onRedrawSignature: () => void
   onPageDrawerToggle: () => void
+  onDismissRedactHint: () => void
 }
 
 const TOOLS: { tool: Tool; label: string; shortcut: string; Icon: typeof CursorIcon }[] = [
@@ -45,6 +49,7 @@ const TOOLS: { tool: Tool; label: string; shortcut: string; Icon: typeof CursorI
   { tool: 'draw', label: 'Draw / sign', shortcut: 'D', Icon: PenIcon },
   { tool: 'erase', label: 'Erase strokes', shortcut: 'E', Icon: EraserIcon },
   { tool: 'highlight', label: 'Highlight', shortcut: 'H', Icon: HighlighterIcon },
+  { tool: 'redact', label: 'Redact', shortcut: 'R', Icon: RedactIcon },
 ]
 
 const PEN_WIDTHS = [1, 2, 3, 5, 8]
@@ -60,16 +65,18 @@ export function Toolbar({
   zoom,
   saving,
   pageDrawerOpen,
+  showRedactHint,
   dispatch,
   onZoom,
   onDownload,
   onClose,
+  onDismissRedactHint,
   onSignatureClick,
   onRedrawSignature,
   onPageDrawerToggle,
 }: ToolbarProps) {
   return (
-    <header className="z-30 border-b border-slate-200 bg-white shadow-sm">
+    <header className="relative z-50 border-b border-slate-200 bg-white shadow-sm">
       {/* Row 1: brand + trust badge + the actions that must NEVER move
           (Undo/Redo/Zoom/Download/Close) — kept on their own always-present
           row so switching tools below can never push Close off-canvas or
@@ -166,21 +173,40 @@ export function Toolbar({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 bg-slate-50/60 px-4 py-2">
         <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1.5" role="toolbar" aria-label="Tools">
           {TOOLS.map(({ tool: t, label, shortcut, Icon }) => (
-            <button
-              key={t}
-              type="button"
-              title={`${label} (${shortcut})`}
-              aria-pressed={tool === t}
-              onClick={() => dispatch({ type: 'SET_TOOL', tool: t })}
-              className={`flex items-center gap-2 rounded-md px-3.5 py-2.5 text-base font-medium transition-colors ${
-                tool === t
-                  ? 'bg-white text-sky-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Icon width={22} height={22} strokeWidth={2} />
-              <span className="hidden sm:inline">{label.split(' ')[0]}</span>
-            </button>
+            <div key={t} className="relative">
+              <button
+                type="button"
+                title={`${label} (${shortcut})`}
+                aria-pressed={tool === t}
+                onClick={() => dispatch({ type: 'SET_TOOL', tool: t })}
+                className={`flex items-center gap-2 rounded-md px-3.5 py-2.5 text-base font-medium transition-colors ${
+                  tool === t
+                    ? 'bg-white text-sky-600 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Icon width={22} height={22} strokeWidth={2} />
+                <span className="hidden sm:inline">{label.split(' ')[0]}</span>
+              </button>
+              {t === 'redact' && showRedactHint && (
+                <div className="absolute left-0 top-full z-40 mt-2 w-64 rounded-lg bg-slate-900 p-3 text-white shadow-xl">
+                  <div className="absolute -top-1 left-4 h-2 w-2 rotate-45 bg-slate-900" />
+                  <p className="mb-1.5 text-xs font-semibold">How to redact</p>
+                  <ol className="list-decimal space-y-1 pl-4 text-xs text-slate-200">
+                    <li>Drag a box over the text to remove.</li>
+                    <li>Watch the tooltip — it shows exactly what will be deleted.</li>
+                    <li>Resize the box first if it's catching more than you want.</li>
+                  </ol>
+                  <button
+                    type="button"
+                    onClick={onDismissRedactHint}
+                    className="mt-2 rounded bg-white/10 px-2 py-1 text-xs font-medium hover:bg-white/20"
+                  >
+                    Got it
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
 

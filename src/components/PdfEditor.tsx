@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { OPS } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import { loadPdf } from '../lib/pdfjs'
 import { normalizeRotation, clamp, effectiveGeometry } from '../lib/coords'
@@ -29,6 +30,25 @@ interface LoadedDoc {
   pages: PDFPageProxy[]
   geometries: PageGeometry[]
   formWidgets: FormWidget[]
+  /** Whether each page paints any image XObject — mirrors the same check
+   *  savePdf.ts uses to decide if word-level redaction is possible on a
+   *  page, computed once here so the redact tool can preview it live. */
+  pageHasImages: boolean[]
+}
+
+const IMAGE_OPS = new Set<number>([
+  OPS.paintImageXObject,
+  OPS.paintInlineImageXObject,
+  OPS.paintImageXObjectRepeat,
+  OPS.paintImageMaskXObject,
+  OPS.paintImageMaskXObjectGroup,
+  OPS.paintInlineImageXObjectGroup,
+  OPS.paintImageMaskXObjectRepeat,
+])
+
+async function pageHasImageOp(page: PDFPageProxy): Promise<boolean> {
+  const { fnArray } = await page.getOperatorList()
+  return fnArray.some((fn) => IMAGE_OPS.has(fn))
 }
 
 const TOOL_SHORTCUTS: Record<string, Tool> = {
@@ -37,6 +57,7 @@ const TOOL_SHORTCUTS: Record<string, Tool> = {
   d: 'draw',
   e: 'erase',
   h: 'highlight',
+  r: 'redact',
 }
 
 /**
@@ -102,6 +123,8 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
   const [signatureModalOpen, setSignatureModalOpen] = useState(false)
   const [pageDrawerOpen, setPageDrawerOpen] = useState(false)
   const [inkNoticeDismissed, setInkNoticeDismissed] = useState(false)
+  const [redactNoticeDismissed, setRedactNoticeDismissed] = useState(false)
+  const [redactHintDismissed, setRedactHintDismissed] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [containerWidth, setContainerWidth] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -156,9 +179,10 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
           allWidgets.push(...widgets)
           Object.assign(allValues, values)
         }
+        const pageHasImages = await Promise.all(pages.map(pageHasImageOp))
 
         if (!cancelled) {
-          setLoaded({ doc, pages, geometries, formWidgets: allWidgets })
+          setLoaded({ doc, pages, geometries, formWidgets: allWidgets, pageHasImages })
           dispatch({ type: 'INIT_PAGES', count: pages.length })
           if (allWidgets.length > 0) dispatch({ type: 'INIT_FIELDS', values: allValues })
         }
@@ -248,6 +272,12 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
     onClose()
   }, [history.past.length, onClose])
 
+  // Once the user has actually drawn a redaction box, they've seen the live
+  // preview firsthand — the hint has done its job, stop showing it.
+  useEffect(() => {
+    if (state.redactions.length > 0) setRedactHintDismissed(true)
+  }, [state.redactions.length])
+
   // ----- signature capture / stamping ---------------------------------------
   const handleSignatureClick = useCallback(() => {
     if (state.savedSignature) {
@@ -288,6 +318,9 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
         } else if (state.selectedStrokeKey) {
           e.preventDefault()
           dispatch({ type: 'REMOVE_STROKES', key: state.selectedStrokeKey })
+        } else if (state.selectedRedactionId) {
+          e.preventDefault()
+          dispatch({ type: 'REMOVE_REDACTION', id: state.selectedRedactionId })
         }
         return
       }
@@ -298,7 +331,7 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [state.selectedTextId, state.selectedStrokeKey])
+  }, [state.selectedTextId, state.selectedStrokeKey, state.selectedRedactionId])
 
   // ----- save / download ----------------------------------------------------
   const handleDownload = useCallback(async () => {
@@ -313,6 +346,7 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
         state.strokes,
         state.pageOrder,
         state.formFieldValues,
+        state.redactions,
       )
       downloadBytes(out, editedFileName(fileName))
     } catch (err) {
@@ -327,7 +361,17 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
     } finally {
       setSaving(false)
     }
-  }, [loaded, saving, bytes, state.texts, state.strokes, state.pageOrder, state.formFieldValues, fileName])
+  }, [
+    loaded,
+    saving,
+    bytes,
+    state.texts,
+    state.strokes,
+    state.pageOrder,
+    state.formFieldValues,
+    state.redactions,
+    fileName,
+  ])
 
   // ----- render ---------------------------------------------------------------
   if (loadError) {
@@ -369,10 +413,12 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
         zoom={zoom}
         saving={saving}
         pageDrawerOpen={pageDrawerOpen}
+        showRedactHint={state.tool === 'redact' && !redactHintDismissed}
         dispatch={dispatch}
         onZoom={handleZoom}
         onDownload={() => void handleDownload()}
         onClose={handleClose}
+        onDismissRedactHint={() => setRedactHintDismissed(true)}
         onSignatureClick={handleSignatureClick}
         onRedrawSignature={() => setSignatureModalOpen(true)}
         onPageDrawerToggle={() => setPageDrawerOpen(!pageDrawerOpen)}
@@ -429,6 +475,26 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
         </div>
       )}
 
+      {state.redactions.length > 0 && !redactNoticeDismissed && (
+        <div
+          role="note"
+          className="flex items-center justify-between gap-3 border-b border-slate-300 bg-slate-800 px-4 py-2 text-sm text-slate-100"
+        >
+          <span>
+            Redacted content is permanently removed on download — any page with a black box is flattened to an
+            image, so its text stops being selectable, searchable, or copyable.
+          </span>
+          <button
+            type="button"
+            onClick={() => setRedactNoticeDismissed(true)}
+            aria-label="Dismiss"
+            className="shrink-0 rounded p-1 hover:bg-slate-700"
+          >
+            <CloseIcon width={16} height={16} />
+          </button>
+        </div>
+      )}
+
       <div className="flex min-h-0 flex-1">
         <PageThumbnails
           pages={loaded.pages}
@@ -447,6 +513,7 @@ export function PdfEditor({ bytes, fileName, onClose }: PdfEditorProps) {
                 rotationDelta={entry.rotationDelta}
                 displayIndex={position}
                 formWidgets={loaded.formWidgets.filter((w) => w.pageIndex === entry.originalIndex)}
+                hasImages={loaded.pageHasImages[entry.originalIndex]}
                 scale={scale}
                 state={state}
                 dispatch={dispatch}

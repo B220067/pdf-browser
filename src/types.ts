@@ -87,7 +87,23 @@ export interface Stroke {
   opacity?: number
 }
 
-export type Tool = 'select' | 'text' | 'draw' | 'erase' | 'stamp' | 'highlight'
+export type Tool = 'select' | 'text' | 'draw' | 'erase' | 'stamp' | 'highlight' | 'redact'
+
+/**
+ * A permanent black-box redaction, displayed page space (see Stroke/TextElement).
+ * Unlike a highlight stroke, this is never drawn as a see-through overlay: at
+ * export time the whole page it sits on is rasterized and the box is painted
+ * onto the raster, so the content underneath is not present in the saved file
+ * in any recoverable form (see `lib/savePdf.ts`).
+ */
+export interface RedactionBox {
+  id: string
+  pageIndex: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 /**
  * A signature drawn once (in the signature-capture modal) and reused across

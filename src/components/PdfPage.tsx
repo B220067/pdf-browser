@@ -8,6 +8,7 @@ import type { FormWidget, PageGeometry, Point, Stroke } from '../types'
 import { LINE_HEIGHT, SIGNATURE_TEMPLATE_HEIGHT, SIGNATURE_TEMPLATE_WIDTH } from '../types'
 import { FormFieldOverlay } from './FormFieldOverlay'
 import { InkLayer } from './InkLayer'
+import { RedactLayer } from './RedactLayer'
 import { TextBoxItem } from './TextBoxItem'
 
 interface PdfPageProps {
@@ -20,6 +21,10 @@ interface PdfPageProps {
   displayIndex: number
   /** AcroForm widgets on this page (original-index filtered by the parent). */
   formWidgets: FormWidget[]
+  /** Whether this page paints any image — mirrors savePdf.ts's own check, so
+   *  the redact tool can preview live whether a box will get word-level
+   *  removal or fall back to flattening the whole page. */
+  hasImages: boolean
   scale: number
   state: EditorState
   dispatch: Dispatch<HistoryAction>
@@ -34,6 +39,7 @@ export function PdfPage({
   rotationDelta,
   displayIndex,
   formWidgets,
+  hasImages,
   scale,
   state,
   dispatch,
@@ -299,6 +305,7 @@ export function PdfPage({
       // Clicking bare page area (overlays stop propagation) deselects.
       dispatch({ type: 'SELECT_TEXT', id: null })
       dispatch({ type: 'SELECT_STROKES', key: null })
+      dispatch({ type: 'SELECT_REDACTION', id: null })
     } else if (state.tool === 'stamp' && state.savedSignature) {
       const rect = wrapperRef.current!.getBoundingClientRect()
       const click = clientToDisplayed(e.clientX, e.clientY, rect, geometry)
@@ -322,6 +329,7 @@ export function PdfPage({
 
   const pageTexts = state.texts.filter((t) => t.pageIndex === geometry.pageIndex)
   const pageStrokes = state.strokes.filter((s) => s.pageIndex === geometry.pageIndex)
+  const pageRedactions = state.redactions.filter((r) => r.pageIndex === geometry.pageIndex)
 
   return (
     <div className="flex flex-col items-center gap-1.5">
@@ -335,7 +343,7 @@ export function PdfPage({
           // on all mobile browsers (notably Safari) — setting it here too,
           // on an ancestor <div>, is what actually stops the page from
           // scrolling out from under a touch-drawn or touch-erased stroke.
-          state.tool === 'draw' || state.tool === 'erase' ? 'touch-none' : ''
+          state.tool === 'draw' || state.tool === 'erase' || state.tool === 'redact' ? 'touch-none' : ''
         }`}
         style={{ width: geometry.width * scale, height: geometry.height * scale }}
         onPointerDown={handlePagePointerDown}
@@ -415,6 +423,25 @@ export function PdfPage({
             dispatch={dispatch}
           />
         ))}
+
+        <RedactLayer
+          geometry={geometry}
+          redactions={pageRedactions}
+          tool={state.tool}
+          selectedId={state.selectedRedactionId}
+          textLayerContainer={textLayerRef}
+          preciseRedactionPossible={geometry.rotation === 0 && !hasImages}
+          onSelect={(id) => dispatch({ type: 'SELECT_REDACTION', id })}
+          onMove={(id, dx, dy) => dispatch({ type: 'MOVE_REDACTION', id, dx, dy })}
+          onResize={(id, width, height) => dispatch({ type: 'RESIZE_REDACTION', id, width, height })}
+          onDelete={(id) => dispatch({ type: 'REMOVE_REDACTION', id })}
+          onCommitBox={(rect) =>
+            dispatch({
+              type: 'ADD_REDACTION',
+              box: { id: crypto.randomUUID(), pageIndex: geometry.pageIndex, ...rect },
+            })
+          }
+        />
       </div>
       <span className="text-xs text-slate-400 select-none">Page {displayIndex + 1}</span>
     </div>
