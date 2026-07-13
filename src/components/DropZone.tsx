@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { isPdf } from '../lib/isPdf'
+import { faqPageSchema } from '../lib/seoSchema'
 import { EyeOffIcon, ExpandIcon, FileIcon, LockIcon, LogoMark, ZapIcon } from './icons'
+import { FaqAccordion } from './FaqAccordion'
 
 interface DropZoneProps {
   onFile: (bytes: ArrayBuffer, name: string) => void
@@ -40,6 +42,39 @@ const HOW_IT_WORKS = [
   { step: '2', title: 'Edit & sign', desc: 'Add text, draw, or stamp a saved signature.' },
   { step: '3', title: 'Download', desc: 'Save your finished PDF, ready to share or print.' },
 ]
+
+const FAQS = [
+  {
+    q: 'Is InksPDF free to use?',
+    a: 'Yes, it is completely free with no hidden purchases or watermarks added to your files.',
+  },
+  {
+    q: 'Do I need to sign up or create an account?',
+    a: 'No, you will never need to sign up for an account.',
+  },
+  {
+    q: 'Is my PDF uploaded to a server?',
+    a: 'No, everything runs locally in your browser. Your file never leaves your device.',
+  },
+  {
+    q: 'What can I do with InksPDF?',
+    a: 'Add text, draw or sign, highlight, redact sensitive text, merge multiple PDFs, split or extract pages, and add text-based watermarks or page numbers: choose the right service for your needs.',
+  },
+  {
+    q: 'Does redacting actually remove the text?',
+    a: "Unlike many free tools that just paint a black box over text (leaving the original still copyable underneath), InksPDF's redact tool deletes the underlying text so it can't be recovered.",
+  },
+  {
+    q: 'Is there a file size or page limit?',
+    a: 'No, a 400-page file works the same as a 1-page one.',
+  },
+  {
+    q: 'What browsers does it work on?',
+    a: 'Any modern browser, no installation needed.',
+  },
+]
+
+const FAQ_SCHEMA = faqPageSchema(FAQS)
 
 export function DropZone({
   onFile,
@@ -85,6 +120,7 @@ export function DropZone({
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-100">
+      <script type="application/ld+json">{JSON.stringify(FAQ_SCHEMA)}</script>
       <nav className="animate-fade-up border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
           <div className="flex items-center gap-2">
@@ -100,6 +136,9 @@ export function DropZone({
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center lg:gap-16">
           <div className="animate-fade-up [animation-delay:80ms]">
             <h1 className="font-display text-4xl text-balance text-slate-900 sm:text-5xl">
+              Free, browser-based PDF editor.
+            </h1>
+            <p className="font-display mt-2 text-lg text-ink-600 sm:text-xl">
               Your PDF, your{' '}
               <span className="relative inline-block">
                 ink
@@ -119,7 +158,7 @@ export function DropZone({
                 </svg>
               </span>
               .
-            </h1>
+            </p>
             <p className="mt-4 max-w-md text-lg text-slate-600">
               Add text, draw and sign PDFs — free, no sign-up, and{' '}
               <strong className="text-slate-800">100% in your browser</strong>. Your file never
@@ -242,6 +281,23 @@ export function DropZone({
             </div>
           ))}
         </div>
+
+        <section className="animate-fade-up mt-16 border-t border-slate-200 pt-12 [animation-delay:280ms]">
+          <h2 className="font-display text-2xl text-slate-900 sm:text-3xl">
+            Frequently asked questions
+          </h2>
+          <div className="mt-6">
+            <FaqAccordion items={FAQS} />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="mt-8 text-sm font-medium text-ink-600 hover:underline"
+          >
+            ↑ Back to top
+          </button>
+        </section>
       </main>
 
       <footer className="border-t border-slate-200 py-8 text-center text-xs text-slate-400">

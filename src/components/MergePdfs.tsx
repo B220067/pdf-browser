@@ -3,11 +3,18 @@ import type { DragEvent } from 'react'
 import { isPdf } from '../lib/isPdf'
 import { mergePdfs, UnmergeableFileError } from '../lib/mergePdfs'
 import { downloadBytes } from '../lib/savePdf'
+import { softwareApplicationSchema } from '../lib/seoSchema'
 import { LogoMark, TrashIcon } from './icons'
 
 interface MergePdfsProps {
   onBack: () => void
 }
+
+const SOFTWARE_SCHEMA = softwareApplicationSchema({
+  name: 'InksPDF Merge',
+  description: 'Combine multiple PDFs into one file, in any order, entirely in your browser.',
+  url: 'https://inkspdf.com/merge',
+})
 
 export function MergePdfs({ onBack }: MergePdfsProps) {
   const [files, setFiles] = useState<File[]>([])
@@ -64,6 +71,7 @@ export function MergePdfs({ onBack }: MergePdfsProps) {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <script type="application/ld+json">{JSON.stringify(SOFTWARE_SCHEMA)}</script>
       <nav className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">

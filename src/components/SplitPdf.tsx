@@ -13,11 +13,18 @@ import {
   splitToIndividualPdfs,
 } from '../lib/splitPdf'
 import { downloadBytes } from '../lib/savePdf'
+import { softwareApplicationSchema } from '../lib/seoSchema'
 import { LockIcon, LogoMark } from './icons'
 
 interface SplitPdfProps {
   onBack: () => void
 }
+
+const SOFTWARE_SCHEMA = softwareApplicationSchema({
+  name: 'InksPDF Split',
+  description: 'Pull specific pages out of a PDF or split it into separate files, entirely in your browser.',
+  url: 'https://inkspdf.com/split',
+})
 
 const THUMB_WIDTH = 100
 
@@ -187,6 +194,7 @@ export function SplitPdf({ onBack }: SplitPdfProps) {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <script type="application/ld+json">{JSON.stringify(SOFTWARE_SCHEMA)}</script>
       <nav className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">

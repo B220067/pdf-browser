@@ -7,12 +7,19 @@ import { loadPdf } from '../lib/pdfjs'
 import { getPageCount } from '../lib/splitPdf'
 import { MARGIN, UnstampablePdfError, applyStamp, type PageNumberPosition } from '../lib/watermarkPdf'
 import { downloadBytes } from '../lib/savePdf'
+import { softwareApplicationSchema } from '../lib/seoSchema'
 import { ColorSwatches } from './ColorSwatches'
 import { LockIcon, LogoMark } from './icons'
 
 interface WatermarkPdfProps {
   onBack: () => void
 }
+
+const SOFTWARE_SCHEMA = softwareApplicationSchema({
+  name: 'InksPDF Watermark & Page Numbers',
+  description: 'Stamp a text watermark and page numbers across every page of a PDF, entirely in your browser.',
+  url: 'https://inkspdf.com/watermark',
+})
 
 const POSITIONS: { value: PageNumberPosition; label: string }[] = [
   { value: 'bottom-center', label: 'Bottom center' },
@@ -234,6 +241,7 @@ export function WatermarkPdf({ onBack }: WatermarkPdfProps) {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <script type="application/ld+json">{JSON.stringify(SOFTWARE_SCHEMA)}</script>
       <nav className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">

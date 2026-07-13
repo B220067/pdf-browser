@@ -16,4 +16,12 @@
     <loc>https://inkspdf.com/watermark</loc>
     <priority>0.8</priority>
   </url>
+  <url>
+    <loc>https://inkspdf.com/terms</loc>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://inkspdf.com/privacy</loc>
+    <priority>0.3</priority>
+  </url>
 </urlset>
