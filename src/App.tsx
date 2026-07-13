@@ -1,11 +1,27 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { DropZone } from './components/DropZone'
-import { MergePdfs } from './components/MergePdfs'
-import { PdfEditor } from './components/PdfEditor'
-import { PrivacyPolicy } from './components/PrivacyPolicy'
-import { SplitPdf } from './components/SplitPdf'
-import { TermsOfUse } from './components/TermsOfUse'
-import { WatermarkPdf } from './components/WatermarkPdf'
+
+// Route-based code splitting: DropZone (the homepage, and what most new
+// visitors from search land on) stays in the main bundle since it's shown
+// immediately and is lightweight on its own. Everything else — especially
+// PdfEditor, which pulls in the whole pdf.js/pdf-lib editing engine — only
+// needs to load once a visitor actually navigates there, so it's excluded
+// from the bundle everyone pays for on first load.
+const PdfEditor = lazy(() => import('./components/PdfEditor').then((m) => ({ default: m.PdfEditor })))
+const MergePdfs = lazy(() => import('./components/MergePdfs').then((m) => ({ default: m.MergePdfs })))
+const SplitPdf = lazy(() => import('./components/SplitPdf').then((m) => ({ default: m.SplitPdf })))
+const WatermarkPdf = lazy(() => import('./components/WatermarkPdf').then((m) => ({ default: m.WatermarkPdf })))
+const TermsOfUse = lazy(() => import('./components/TermsOfUse').then((m) => ({ default: m.TermsOfUse })))
+const PrivacyPolicy = lazy(() => import('./components/PrivacyPolicy').then((m) => ({ default: m.PrivacyPolicy })))
+
+function RouteLoadingFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-100">
+      <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-sky-500" />
+    </div>
+  )
+}
 
 interface LoadedFile {
   /** Monotonic id so re-opening the same file fully remounts the editor. */
@@ -15,6 +31,8 @@ interface LoadedFile {
 }
 
 export type Screen = 'home' | 'merge' | 'split' | 'watermark' | 'terms' | 'privacy'
+
+const SITE_URL = 'https://inkspdf.com'
 
 /** Each tool gets a real, bookmarkable, indexable URL — not just in-memory state. */
 const PATH_TO_SCREEN: Record<string, Screen> = {
@@ -36,7 +54,7 @@ export const SCREEN_TO_PATH: Record<Screen, string> = {
 
 const SEO: Record<Screen, { title: string; description: string }> = {
   home: {
-    title: 'InksPDF — free in-browser PDF editor',
+    title: 'Free, browser-based PDF editor. No sign-up, 100% local.',
     description:
       'Free online PDF editor that runs 100% in your browser. Add text, draw, sign and download — your file never leaves your device.',
   },
@@ -90,6 +108,12 @@ export default function App() {
     const meta = SEO[screen]
     document.title = meta.title
     document.querySelector('meta[name="description"]')?.setAttribute('content', meta.description)
+    // Self-referencing canonical per route — the URL doesn't change while a
+    // file is open (see the `file` branch above), so this only needs to run
+    // here, keyed off the actual route.
+    document
+      .querySelector('link[rel="canonical"]')
+      ?.setAttribute('href', `${SITE_URL}${SCREEN_TO_PATH[screen]}`)
   }, [screen, file])
 
   const navigate = useCallback((next: Screen) => {
@@ -111,8 +135,9 @@ export default function App() {
     setFile((prev) => ({ id: (prev?.id ?? 0) + 1, bytes, name }))
   }, [])
 
+  let content: ReactNode
   if (file) {
-    return (
+    content = (
       <PdfEditor
         key={file.id}
         bytes={file.bytes}
@@ -125,22 +150,30 @@ export default function App() {
         }}
       />
     )
+  } else if (screen === 'merge') {
+    content = <MergePdfs onBack={goBack} />
+  } else if (screen === 'split') {
+    content = <SplitPdf onBack={goBack} />
+  } else if (screen === 'watermark') {
+    content = <WatermarkPdf onBack={goBack} />
+  } else if (screen === 'terms') {
+    content = <TermsOfUse onBack={goBack} />
+  } else if (screen === 'privacy') {
+    content = <PrivacyPolicy onBack={goBack} />
+  } else {
+    content = (
+      <DropZone
+        onFile={handleFile}
+        onMergeClick={() => navigate('merge')}
+        onSplitClick={() => navigate('split')}
+        onWatermarkClick={() => navigate('watermark')}
+        onTermsClick={() => navigate('terms')}
+        onPrivacyClick={() => navigate('privacy')}
+      />
+    )
   }
 
-  if (screen === 'merge') return <MergePdfs onBack={goBack} />
-  if (screen === 'split') return <SplitPdf onBack={goBack} />
-  if (screen === 'watermark') return <WatermarkPdf onBack={goBack} />
-  if (screen === 'terms') return <TermsOfUse onBack={goBack} />
-  if (screen === 'privacy') return <PrivacyPolicy onBack={goBack} />
-
-  return (
-    <DropZone
-      onFile={handleFile}
-      onMergeClick={() => navigate('merge')}
-      onSplitClick={() => navigate('split')}
-      onWatermarkClick={() => navigate('watermark')}
-      onTermsClick={() => navigate('terms')}
-      onPrivacyClick={() => navigate('privacy')}
-    />
-  )
+  // Only the lazy screens above actually suspend — DropZone is eager and
+  // renders immediately, so most visitors never see the fallback at all.
+  return <Suspense fallback={<RouteLoadingFallback />}>{content}</Suspense>
 }

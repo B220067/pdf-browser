@@ -26,6 +26,10 @@ page.on('pageerror', (e) => console.log('[pageerror]', e.message))
 
 await page.goto(url)
 await page.getByRole('link', { name: 'Split PDF' }).click()
+// SplitPdf is a lazily-loaded chunk (see App.tsx) — wait for it to actually
+// mount before touching its file input, or this can race the Suspense
+// fallback and hit the homepage's own (still-transitioning-out) input.
+await page.waitForSelector('h1:has-text("Split PDF")')
 await page.setInputFiles('input[type=file]', join(here, '3page.pdf'))
 await page.waitForSelector('text=3 pages')
 console.log('page count detected: PASS')
