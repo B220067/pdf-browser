@@ -48,6 +48,15 @@ export function PdfPage({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textLayerRef = useRef<HTMLDivElement>(null)
   const textLayerTaskRef = useRef<TextLayer | null>(null)
+  /** pdf.js's real loaded font name per rendered span (e.g. "g_d0_f1"), used
+   *  by the redact tool to measure word widths against the PDF's actual
+   *  font instead of guessing with a generic one — see RedactLayer's
+   *  spanFontNames prop and lib/canvasInk.ts's measureRelativeWidths. Only
+   *  populated when the item count safely lines up 1:1 with rendered spans
+   *  (same alignment savePdf.ts's measureTextItemBoxes checks for); left
+   *  null otherwise so callers fall back to a generic font rather than
+   *  risk mismatched font names. */
+  const spanFontNamesRef = useRef<(string | null)[] | null>(null)
   // Lazy rendering: pages render their canvas once they approach the viewport
   // and stay rendered, so long documents load fast and scrolling stays smooth.
   const [nearViewport, setNearViewport] = useState(false)
@@ -266,6 +275,20 @@ export function PdfPage({
         })
         textLayerRef.current!.innerHTML = ''
         await textLayerTaskRef.current.render()
+        if (cancelled || !textLayerRef.current) return
+
+        // Real text items line up 1:1 with rendered spans in the common
+        // case (pdf.js drops a span only for its own synthetic empty-string
+        // line-break markers, already excluded by the str !== '' filter).
+        // Only trust the alignment when the counts actually match — a
+        // mismatch means something about this page's structure isn't the
+        // simple case, and guessing wrong associations would be worse than
+        // just falling back to a generic font.
+        const nonEmptyItems = textContent.items.filter(
+          (it): it is typeof it & { str: string; fontName: string } => 'str' in it && it.str !== '',
+        )
+        const spanCount = textLayerRef.current.querySelectorAll('span').length
+        spanFontNamesRef.current = nonEmptyItems.length === spanCount ? nonEmptyItems.map((it) => it.fontName) : null
       } catch {
         // Ignore errors if text extraction fails
       }
@@ -430,6 +453,7 @@ export function PdfPage({
           tool={state.tool}
           selectedId={state.selectedRedactionId}
           textLayerContainer={textLayerRef}
+          spanFontNames={spanFontNamesRef}
           preciseRedactionPossible={geometry.rotation === 0 && !hasImages}
           onSelect={(id) => dispatch({ type: 'SELECT_REDACTION', id })}
           onMove={(id, dx, dy) => dispatch({ type: 'MOVE_REDACTION', id, dx, dy })}

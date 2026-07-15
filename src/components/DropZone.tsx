@@ -51,12 +51,12 @@ const HOW_IT_WORKS = [
   {
     step: '3',
     title: 'Download',
-    desc: 'Click download to save your finished PDF — it is generated locally and never uploaded to a server.',
+    desc: 'Click download to save your finished PDF: it is generated locally and never uploaded to a server.',
   },
 ]
 
 const HOW_TO_DIRECT_ANSWER =
-  'To edit a PDF online for free, drop your file into InksPDF, use the toolbar to add text, draw, or sign, then click download — no signup or upload required.'
+  'To edit a PDF online for free, drop your file into InksPDF, use the toolbar to add text, draw, or sign, then click download: no signup or upload required.'
 
 const HOW_TO_SCHEMA = howToSchema({
   name: 'How to edit a PDF online for free',
@@ -88,6 +88,10 @@ const FAQS = [
   {
     q: 'Does redacting actually remove the text?',
     a: "Unlike many free tools that just paint a black box over text (leaving the original still copyable underneath), InksPDF's redact tool deletes the underlying text so it can't be recovered.",
+  },
+  {
+    q: 'How do I redact a PDF, and how can I confirm it worked?',
+    a: 'Select the Redact tool, then click a word or drag a box over the text you want removed: a live preview shows exactly which words will be redacted before you commit. To confirm it worked, download the edited PDF and try to select, copy, or search for the redacted text yourself: if the redaction is real, nothing will be there to find. We recommend this quick check before sharing any sensitive document, with any redaction tool, not just ours.',
   },
   {
     q: 'Is there a file size or page limit?',

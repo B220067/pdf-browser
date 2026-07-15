@@ -2,6 +2,8 @@ import { useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import type { PageGeometry, RedactionBox, Tool } from '../types'
 import { clamp } from '../lib/coords'
+import { allWordHits, groupByLine, wordAtPoint, wordsIntersecting } from '../lib/textLayerWords'
+import type { WordHit } from '../lib/textLayerWords'
 import { TrashIcon } from './icons'
 
 interface RedactLayerProps {
@@ -16,6 +18,12 @@ interface RedactLayerProps {
    *  including cases where it merges adjacent words into one run (see
    *  lib/savePdf.ts's notes on `measureTextItemBoxes`). */
   textLayerContainer: RefObject<HTMLDivElement | null>
+  /** pdf.js's real loaded font name per rendered span, in the same order as
+   *  `textLayerContainer`'s spans — see PdfPage.tsx and
+   *  lib/canvasInk.ts's measureRelativeWidths. Null (whole array, or this
+   *  ref's value) means "not confidently available", not "no font": word
+   *  splitting falls back to a generic font rather than guess wrong. */
+  spanFontNames: RefObject<(string | null)[] | null>
   /** Whether this page qualifies for word-level removal at all (no images,
    *  not rotated — mirrors savePdf.ts's own early checks). When false, ANY
    *  box on this page results in the whole page being flattened, regardless
@@ -29,12 +37,17 @@ interface RedactLayerProps {
   onDelete: (id: string) => void
 }
 
-/** A click (not a drag) creates a box this size, centered on the click point. */
+/** A click (not a drag) with no word under the cursor creates a box this
+ *  size, centered on the click point — e.g. for redacting part of an image. */
 const DEFAULT_BOX_WIDTH = 140
 const DEFAULT_BOX_HEIGHT = 22
 /** Below this drag distance (page units), treat the gesture as a click. */
 const CLICK_THRESHOLD = 4
 const MIN_BOX_SIZE = 8
+/** Small margin (page units) added around a word-snapped box so it doesn't
+ *  razor-hug glyph edges — matches the padding convention savePdf.ts uses
+ *  around a redacted run's own raster patch. */
+const WORD_PADDING = 2
 
 interface DraftRect {
   x: number
@@ -65,6 +78,7 @@ export function RedactLayer({
   tool,
   selectedId,
   textLayerContainer,
+  spanFontNames,
   preciseRedactionPossible,
   onCommitBox,
   onSelect,
@@ -75,7 +89,13 @@ export function RedactLayer({
   const svgRef = useRef<SVGSVGElement>(null)
   const [draft, setDraft] = useState<DraftRect | null>(null)
   const [preview, setPreview] = useState<PreviewItem[] | null>(null)
-  const drawRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null)
+  const drawRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    startClientX: number
+    startClientY: number
+  } | null>(null)
   const moveRef = useRef<{
     pointerId: number
     id: string
@@ -93,9 +113,29 @@ export function RedactLayer({
     }
   }
 
-  /** Which rendered text-layer spans a candidate rect (displayed page
-   *  space) currently overlaps, with their text and their own bounding box
-   *  (also converted to displayed space, for the highlight overlay). */
+  /** Displayed page-space (this SVG's viewBox units) <-> viewport client
+   *  space, so word rects from the DOM text layer (necessarily in client
+   *  space — that's what getClientRects() reports) can be drawn in the SVG
+   *  and compared against the page-space draft rect the user is dragging. */
+  const clientToLocalRect = (r: DOMRect, svgRect: DOMRect): DraftRect => {
+    const sx = svgRect.width / geometry.width
+    const sy = svgRect.height / geometry.height
+    return {
+      x: (r.left - svgRect.left) / sx,
+      y: (r.top - svgRect.top) / sy,
+      width: r.width / sx,
+      height: r.height / sy,
+    }
+  }
+  const localToClientRect = (rect: DraftRect, svgRect: DOMRect): DOMRect => {
+    const sx = svgRect.width / geometry.width
+    const sy = svgRect.height / geometry.height
+    return new DOMRect(svgRect.left + rect.x * sx, svgRect.top + rect.y * sy, rect.width * sx, rect.height * sy)
+  }
+
+  /** Which individual words (not whole text-layer spans — see
+   *  lib/textLayerWords.ts for why that distinction matters, especially for
+   *  titles) a candidate rect (displayed page space) currently overlaps. */
   const updatePreview = (rect: DraftRect) => {
     const container = textLayerContainer.current
     const svgRect = svgRef.current?.getBoundingClientRect()
@@ -103,31 +143,66 @@ export function RedactLayer({
       setPreview(null)
       return
     }
-    const sx = svgRect.width / geometry.width
-    const sy = svgRect.height / geometry.height
-    const clientLeft = svgRect.left + rect.x * sx
-    const clientTop = svgRect.top + rect.y * sy
-    const clientRight = clientLeft + rect.width * sx
-    const clientBottom = clientTop + rect.height * sy
+    const hits = wordsIntersecting(container, localToClientRect(rect, svgRect), spanFontNames.current)
+    setPreview(hits.map((h) => ({ text: h.text, rect: clientToLocalRect(h.rect, svgRect) })))
+  }
 
-    const items: PreviewItem[] = []
-    for (const span of container.querySelectorAll('span')) {
-      const text = span.textContent?.trim()
-      if (!text) continue
-      const r = span.getBoundingClientRect()
-      const overlaps = r.left < clientRight && r.right > clientLeft && r.top < clientBottom && r.bottom > clientTop
-      if (!overlaps) continue
-      items.push({
-        text,
-        rect: {
-          x: (r.left - svgRect.left) / sx,
-          y: (r.top - svgRect.top) / sy,
-          width: r.width / sx,
-          height: r.height / sy,
-        },
-      })
+  /** The word-snapped box for a finished drag: if every word the drag
+   *  touched sits on one visual line, snap toward their union (like
+   *  selecting text) instead of the raw freeform rectangle the user dragged
+   *  — that raw rectangle is what used to catch a whole title in one go.
+   *  Returns null (meaning: keep the freeform rect) when there's no text
+   *  under the drag at all, or it spans multiple lines, where a single
+   *  rectangle union would sweep up an unrelated horizontal band between
+   *  the lines.
+   *
+   *  The union isn't purely tight, though: pdf.js's per-word measurement
+   *  (see lib/textLayerWords.ts) can undershoot a word's true trailing edge
+   *  — worst for the last word of a long/bold heading — which would leave a
+   *  sliver of the word visibly poking out past a tightly-snapped box. So
+   *  each edge grows toward wherever the user's own raw drag reached, capped
+   *  at the nearest word the drag DIDN'T match — close enough to catch that
+   *  overshoot without ever bleeding into text that wasn't touched. */
+  const wordSnappedBox = (rect: DraftRect): DraftRect | null => {
+    const container = textLayerContainer.current
+    const svgRect = svgRef.current?.getBoundingClientRect()
+    if (!container || !svgRect || svgRect.width === 0 || svgRect.height === 0) return null
+    const dragClientRect = localToClientRect(rect, svgRect)
+    const hits = wordsIntersecting(container, dragClientRect, spanFontNames.current)
+    if (hits.length === 0) return null
+    const lines = groupByLine(hits)
+    if (lines.length !== 1) return null
+    const matched = lines[0]
+    const isMatched = (w: WordHit) => matched.some((m) => m.text === w.text && m.rect.left === w.rect.left)
+
+    const tightLeft = Math.min(...matched.map((h) => h.rect.left))
+    const tightRight = Math.max(...matched.map((h) => h.rect.right))
+    let leftBoundary = -Infinity
+    let rightBoundary = Infinity
+    for (const w of allWordHits(container, spanFontNames.current)) {
+      if (Math.abs(w.rect.bottom - matched[0].rect.bottom) >= 8 || isMatched(w)) continue
+      if (w.rect.right <= tightLeft) leftBoundary = Math.max(leftBoundary, w.rect.right)
+      if (w.rect.left >= tightRight) rightBoundary = Math.min(rightBoundary, w.rect.left)
     }
-    setPreview(items)
+
+    const clientLeft = Math.max(Math.min(dragClientRect.left, tightLeft), leftBoundary)
+    const clientRight = Math.min(Math.max(dragClientRect.right, tightRight), rightBoundary)
+    const clientTop = Math.min(...matched.map((h) => h.rect.top))
+    const clientBottom = Math.max(...matched.map((h) => h.rect.bottom))
+    const local = clientToLocalRect(
+      new DOMRect(clientLeft, clientTop, clientRight - clientLeft, clientBottom - clientTop),
+      svgRect,
+    )
+    const x = local.x - WORD_PADDING
+    const y = local.y - WORD_PADDING
+    const right = local.x + local.width + WORD_PADDING
+    const bottom = local.y + local.height + WORD_PADDING
+    return {
+      x: clamp(x, 0, geometry.width),
+      y: clamp(y, 0, geometry.height),
+      width: clamp(right, 0, geometry.width) - clamp(x, 0, geometry.width),
+      height: clamp(bottom, 0, geometry.height) - clamp(y, 0, geometry.height),
+    }
   }
 
   // ----- drawing a new box --------------------------------------------------
@@ -136,7 +211,13 @@ export function RedactLayer({
     e.preventDefault()
     svgRef.current?.setPointerCapture(e.pointerId)
     const pt = toLocal(e)
-    drawRef.current = { pointerId: e.pointerId, startX: pt.x, startY: pt.y }
+    drawRef.current = {
+      pointerId: e.pointerId,
+      startX: pt.x,
+      startY: pt.y,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+    }
     setDraft({ x: pt.x, y: pt.y, width: 0, height: 0 })
   }
 
@@ -164,8 +245,24 @@ export function RedactLayer({
     if (!rect) return
 
     if (rect.width < CLICK_THRESHOLD && rect.height < CLICK_THRESHOLD) {
-      // A tap/click with no meaningful drag: drop a default-sized box
-      // centered on the click point instead of committing a sliver.
+      // A tap/click with no meaningful drag: snap to the exact word under
+      // the cursor, if any — otherwise fall back to a default-sized box
+      // centered on the click point (e.g. for redacting part of an image).
+      const container = textLayerContainer.current
+      const hit = container ? wordAtPoint(container, d.startClientX, d.startClientY, spanFontNames.current) : null
+      if (hit) {
+        const svgRect = svgRef.current!.getBoundingClientRect()
+        const word = clientToLocalRect(hit.rect, svgRect)
+        const x = clamp(word.x - WORD_PADDING, 0, geometry.width)
+        const y = clamp(word.y - WORD_PADDING, 0, geometry.height)
+        onCommitBox({
+          x,
+          y,
+          width: clamp(word.x + word.width + WORD_PADDING, 0, geometry.width) - x,
+          height: clamp(word.y + word.height + WORD_PADDING, 0, geometry.height) - y,
+        })
+        return
+      }
       const width = Math.min(DEFAULT_BOX_WIDTH, geometry.width)
       const height = Math.min(DEFAULT_BOX_HEIGHT, geometry.height)
       onCommitBox({
@@ -177,7 +274,7 @@ export function RedactLayer({
       return
     }
     if (rect.width < MIN_BOX_SIZE || rect.height < MIN_BOX_SIZE) return
-    onCommitBox(rect)
+    onCommitBox(wordSnappedBox(rect) ?? rect)
   }
 
   // ----- selecting & moving --------------------------------------------------
@@ -305,7 +402,7 @@ export function RedactLayer({
               ? 'This page will be fully flattened to an image (contains an image or is rotated)'
               : preview.length === 0
                 ? 'No text under this box'
-                : `Redacting: ${preview.map((p) => p.text).join(', ')}`}
+                : `Redacting: ${preview.map((p) => p.text).join(' ')}`}
           </div>
         </foreignObject>
       )}
