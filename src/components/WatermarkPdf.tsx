@@ -8,6 +8,7 @@ import { getPageCount } from '../lib/splitPdf'
 import { MARGIN, UnstampablePdfError, applyStamp, type PageNumberPosition } from '../lib/watermarkPdf'
 import { downloadBytes } from '../lib/savePdf'
 import { softwareApplicationSchema } from '../lib/seoSchema'
+import seoRoutes from '../seo-routes.json'
 import { ColorSwatches } from './ColorSwatches'
 import { LockIcon, LogoMark } from './icons'
 
@@ -16,9 +17,10 @@ interface WatermarkPdfProps {
 }
 
 const SOFTWARE_SCHEMA = softwareApplicationSchema({
-  name: 'InksPDF Watermark & Page Numbers',
-  description: 'Stamp a text watermark and page numbers across every page of a PDF, entirely in your browser.',
-  url: 'https://inkspdf.com/watermark',
+  name: seoRoutes.watermark.schemaName,
+  description: seoRoutes.watermark.schemaDescription,
+  url: `https://inkspdf.com${seoRoutes.watermark.path}`,
+  featureList: seoRoutes.watermark.featureList,
 })
 
 const POSITIONS: { value: PageNumberPosition; label: string }[] = [

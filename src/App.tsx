@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { DropZone } from './components/DropZone'
+import seoRoutes from './seo-routes.json'
 
 // Route-based code splitting: DropZone (the homepage, and what most new
 // visitors from search land on) stays in the main bundle since it's shown
@@ -34,7 +35,18 @@ export type Screen = 'home' | 'merge' | 'split' | 'watermark' | 'terms' | 'priva
 
 const SITE_URL = 'https://inkspdf.com'
 
-/** Each tool gets a real, bookmarkable, indexable URL — not just in-memory state. */
+/** Each tool gets a real, bookmarkable, indexable URL — not just in-memory state.
+ *  Paths (including the trailing slash on non-home routes, which matches what
+ *  GitHub Pages actually serves as the canonical 200 for a directory-style
+ *  route — a bare "/merge" 301s to "/merge/") come from seo-routes.json, the
+ *  same source scripts/postbuild.mjs uses, so the canonical tag baked into
+ *  the static HTML always matches the one React sets after hydration. */
+export const SCREEN_TO_PATH: Record<Screen, string> = Object.fromEntries(
+  Object.entries(seoRoutes).map(([screen, route]) => [screen, route.path]),
+) as Record<Screen, string>
+
+// screenFromPath() below strips any trailing slash before this lookup, so
+// keys here stay in bare form regardless of what SCREEN_TO_PATH serves.
 const PATH_TO_SCREEN: Record<string, Screen> = {
   '/': 'home',
   '/merge': 'merge',
@@ -43,45 +55,11 @@ const PATH_TO_SCREEN: Record<string, Screen> = {
   '/terms': 'terms',
   '/privacy': 'privacy',
 }
-export const SCREEN_TO_PATH: Record<Screen, string> = {
-  home: '/',
-  merge: '/merge',
-  split: '/split',
-  watermark: '/watermark',
-  terms: '/terms',
-  privacy: '/privacy',
-}
 
-const SEO: Record<Screen, { title: string; description: string }> = {
-  home: {
-    title: 'Free, browser-based PDF editor. No sign-up, 100% local.',
-    description:
-      'Free online PDF editor that runs 100% in your browser. Add text, draw, sign and download — your file never leaves your device.',
-  },
-  merge: {
-    title: 'Merge PDF files online free — InksPDF',
-    description:
-      'Combine multiple PDFs into one file, in any order, entirely in your browser. No upload, no signup, no file size limit.',
-  },
-  split: {
-    title: 'Split & extract PDF pages online free — InksPDF',
-    description:
-      'Pull specific pages out of a PDF or split it into separate files, entirely in your browser. No upload, no signup.',
-  },
-  watermark: {
-    title: 'Add watermark & page numbers to a PDF — InksPDF',
-    description:
-      'Stamp a text watermark and page numbers across every page of a PDF, entirely in your browser. No upload, no signup.',
-  },
-  terms: {
-    title: 'Terms of Use — InksPDF',
-    description: 'The terms for using InksPDF.',
-  },
-  privacy: {
-    title: 'Privacy Policy — InksPDF',
-    description: 'How InksPDF handles (or rather, never handles) your files and data.',
-  },
-}
+// Single source of truth shared with scripts/postbuild.mjs, so the
+// pre-hydration static HTML served to non-JS crawlers (most AI bots included)
+// matches what React sets after hydration instead of drifting from it.
+const SEO: Record<Screen, { title: string; description: string }> = seoRoutes
 
 function screenFromPath(pathname: string): Screen {
   // Tolerate a trailing slash (e.g. "/merge/") so the rendered screen always

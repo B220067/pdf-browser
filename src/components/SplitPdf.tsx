@@ -14,6 +14,7 @@ import {
 } from '../lib/splitPdf'
 import { downloadBytes } from '../lib/savePdf'
 import { softwareApplicationSchema } from '../lib/seoSchema'
+import seoRoutes from '../seo-routes.json'
 import { LockIcon, LogoMark } from './icons'
 
 interface SplitPdfProps {
@@ -21,9 +22,10 @@ interface SplitPdfProps {
 }
 
 const SOFTWARE_SCHEMA = softwareApplicationSchema({
-  name: 'InksPDF Split',
-  description: 'Pull specific pages out of a PDF or split it into separate files, entirely in your browser.',
-  url: 'https://inkspdf.com/split',
+  name: seoRoutes.split.schemaName,
+  description: seoRoutes.split.schemaDescription,
+  url: `https://inkspdf.com${seoRoutes.split.path}`,
+  featureList: seoRoutes.split.featureList,
 })
 
 const THUMB_WIDTH = 100

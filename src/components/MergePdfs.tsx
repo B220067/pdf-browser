@@ -4,6 +4,7 @@ import { isPdf } from '../lib/isPdf'
 import { mergePdfs, UnmergeableFileError } from '../lib/mergePdfs'
 import { downloadBytes } from '../lib/savePdf'
 import { softwareApplicationSchema } from '../lib/seoSchema'
+import seoRoutes from '../seo-routes.json'
 import { LogoMark, TrashIcon } from './icons'
 
 interface MergePdfsProps {
@@ -11,9 +12,10 @@ interface MergePdfsProps {
 }
 
 const SOFTWARE_SCHEMA = softwareApplicationSchema({
-  name: 'InksPDF Merge',
-  description: 'Combine multiple PDFs into one file, in any order, entirely in your browser.',
-  url: 'https://inkspdf.com/merge',
+  name: seoRoutes.merge.schemaName,
+  description: seoRoutes.merge.schemaDescription,
+  url: `https://inkspdf.com${seoRoutes.merge.path}`,
+  featureList: seoRoutes.merge.featureList,
 })
 
 export function MergePdfs({ onBack }: MergePdfsProps) {

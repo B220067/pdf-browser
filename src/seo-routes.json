@@ -1,0 +1,53 @@
+{
+  "home": {
+    "path": "/",
+    "title": "Free, browser-based PDF editor. No sign-up, 100% local.",
+    "description": "Free online PDF editor that runs 100% in your browser. Add text, draw, sign and download — your file never leaves your device."
+  },
+  "merge": {
+    "path": "/merge/",
+    "title": "Merge PDF files online free — InksPDF",
+    "description": "Combine multiple PDFs into one file, in any order, entirely in your browser. No upload, no signup, no file size limit.",
+    "schemaName": "InksPDF Merge",
+    "schemaDescription": "Combine multiple PDF files into one document, in any order, entirely in your browser, with no upload and no file size limit.",
+    "featureList": [
+      "Combine unlimited PDF files into one document",
+      "Reorder files by dragging before merging",
+      "Runs entirely in the browser — files are never uploaded"
+    ]
+  },
+  "split": {
+    "path": "/split/",
+    "title": "Split & extract PDF pages online free — InksPDF",
+    "description": "Pull specific pages out of a PDF or split it into separate files, entirely in your browser. No upload, no signup.",
+    "schemaName": "InksPDF Split",
+    "schemaDescription": "Extract specific pages from a PDF or split it into multiple separate files, entirely in your browser.",
+    "featureList": [
+      "Extract specific pages or page ranges",
+      "Split one PDF into multiple separate files",
+      "Preview every page before splitting"
+    ]
+  },
+  "watermark": {
+    "path": "/watermark/",
+    "title": "Add watermark & page numbers to a PDF — InksPDF",
+    "description": "Stamp a text watermark and page numbers across every page of a PDF, entirely in your browser. No upload, no signup.",
+    "schemaName": "InksPDF Watermark & Page Numbers",
+    "schemaDescription": "Stamp a custom text watermark and add page numbers across every page of a PDF, entirely in your browser.",
+    "featureList": [
+      "Custom text watermark with adjustable color, size and opacity",
+      "Add page numbers in a choice of positions",
+      "Applies to every page of the PDF in one pass"
+    ]
+  },
+  "terms": {
+    "path": "/terms/",
+    "title": "Terms of Use — InksPDF",
+    "description": "The terms for using InksPDF."
+  },
+  "privacy": {
+    "path": "/privacy/",
+    "title": "Privacy Policy — InksPDF",
+    "description": "How InksPDF handles (or rather, never handles) your files and data."
+  }
+}

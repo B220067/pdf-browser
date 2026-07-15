@@ -13,7 +13,33 @@ export function faqPageSchema(items: readonly { q: string; a: string }[]) {
   }
 }
 
-export function softwareApplicationSchema(opts: { name: string; description: string; url: string }) {
+export function howToSchema(opts: {
+  name: string
+  description: string
+  steps: readonly { title: string; desc: string }[]
+}) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'HowTo',
+    name: opts.name,
+    description: opts.description,
+    step: opts.steps.map(({ title, desc }) => ({
+      '@type': 'HowToStep',
+      name: title,
+      text: desc,
+    })),
+  }
+}
+
+export function softwareApplicationSchema(opts: {
+  name: string
+  description: string
+  url: string
+  /** Plain-language capabilities, so an AI reading this JSON-LD knows exactly
+   *  what the tool does without having to parse page copy. */
+  featureList?: readonly string[]
+  image?: string
+}) {
   return {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
@@ -22,6 +48,9 @@ export function softwareApplicationSchema(opts: { name: string; description: str
     url: opts.url,
     applicationCategory: 'UtilitiesApplication',
     operatingSystem: 'Any',
+    browserRequirements: 'Requires JavaScript.',
+    ...(opts.featureList ? { featureList: opts.featureList } : {}),
+    ...(opts.image ? { image: opts.image } : {}),
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
   }
 }

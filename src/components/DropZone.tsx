@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { isPdf } from '../lib/isPdf'
-import { faqPageSchema } from '../lib/seoSchema'
+import { faqPageSchema, howToSchema } from '../lib/seoSchema'
 import { EyeOffIcon, ExpandIcon, FileIcon, LockIcon, LogoMark, ZapIcon } from './icons'
 import { FaqAccordion } from './FaqAccordion'
 
@@ -38,12 +38,37 @@ const TRUST_BADGES = [
 ]
 
 const HOW_IT_WORKS = [
-  { step: '1', title: 'Drop your file', desc: 'Drag a PDF in, or click to browse your files.' },
-  { step: '2', title: 'Edit & sign', desc: 'Add text, draw, or stamp a saved signature.' },
-  { step: '3', title: 'Download', desc: 'Save your finished PDF, ready to share or print.' },
+  {
+    step: '1',
+    title: 'Drop your file',
+    desc: 'Drag a PDF into InksPDF, or click to browse and select a file from your device.',
+  },
+  {
+    step: '2',
+    title: 'Edit & sign',
+    desc: 'Use the toolbar to add text, draw or highlight, redact sensitive content, or stamp a saved signature.',
+  },
+  {
+    step: '3',
+    title: 'Download',
+    desc: 'Click download to save your finished PDF — it is generated locally and never uploaded to a server.',
+  },
 ]
 
+const HOW_TO_DIRECT_ANSWER =
+  'To edit a PDF online for free, drop your file into InksPDF, use the toolbar to add text, draw, or sign, then click download — no signup or upload required.'
+
+const HOW_TO_SCHEMA = howToSchema({
+  name: 'How to edit a PDF online for free',
+  description: HOW_TO_DIRECT_ANSWER,
+  steps: HOW_IT_WORKS,
+})
+
 const FAQS = [
+  {
+    q: 'How do I edit a PDF online for free?',
+    a: HOW_TO_DIRECT_ANSWER,
+  },
   {
     q: 'Is InksPDF free to use?',
     a: 'Yes, it is completely free with no hidden purchases or watermarks added to your files.',
@@ -121,6 +146,7 @@ export function DropZone({
   return (
     <div className="flex min-h-screen flex-col bg-slate-100">
       <script type="application/ld+json">{JSON.stringify(FAQ_SCHEMA)}</script>
+      <script type="application/ld+json">{JSON.stringify(HOW_TO_SCHEMA)}</script>
       <nav className="animate-fade-up border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center px-6 py-4">
           <div className="flex items-center gap-2">
@@ -237,7 +263,7 @@ export function DropZone({
             <div className="mt-6 flex flex-col items-center gap-3 text-center sm:flex-row sm:flex-wrap sm:gap-2">
               <p className="text-sm text-slate-500">More tools:</p>
               <a
-                href="/merge"
+                href="/merge/"
                 onClick={(e) => {
                   e.preventDefault()
                   onMergeClick()
@@ -247,7 +273,7 @@ export function DropZone({
                 Merge PDFs
               </a>
               <a
-                href="/split"
+                href="/split/"
                 onClick={(e) => {
                   e.preventDefault()
                   onSplitClick()
@@ -257,7 +283,7 @@ export function DropZone({
                 Split PDF
               </a>
               <a
-                href="/watermark"
+                href="/watermark/"
                 onClick={(e) => {
                   e.preventDefault()
                   onWatermarkClick()
@@ -270,7 +296,14 @@ export function DropZone({
           </div>
         </div>
 
-        <div className="animate-fade-up mt-12 grid gap-10 [animation-delay:240ms] sm:grid-cols-3 sm:gap-8">
+        <section className="animate-fade-up mt-16 border-t border-slate-200 pt-12 [animation-delay:240ms]">
+          <h2 className="font-display text-2xl text-slate-900 sm:text-3xl">
+            How to edit a PDF online for free
+          </h2>
+          <p className="mt-3 max-w-2xl text-slate-600">{HOW_TO_DIRECT_ANSWER}</p>
+        </section>
+
+        <div className="mt-10 grid gap-10 sm:grid-cols-3 sm:gap-8">
           {HOW_IT_WORKS.map(({ step, title, desc }) => (
             <div key={step}>
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-900 text-sm font-semibold text-white">
@@ -304,7 +337,7 @@ export function DropZone({
         <p>© {new Date().getFullYear()} InksPDF. All rights reserved.</p>
         <div className="mt-2 flex items-center justify-center gap-4">
           <a
-            href="/terms"
+            href="/terms/"
             onClick={(e) => {
               e.preventDefault()
               onTermsClick()
@@ -314,7 +347,7 @@ export function DropZone({
             Terms of Use
           </a>
           <a
-            href="/privacy"
+            href="/privacy/"
             onClick={(e) => {
               e.preventDefault()
               onPrivacyClick()

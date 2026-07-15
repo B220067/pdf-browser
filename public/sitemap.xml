@@ -5,23 +5,23 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://inkspdf.com/merge</loc>
+    <loc>https://inkspdf.com/merge/</loc>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://inkspdf.com/split</loc>
+    <loc>https://inkspdf.com/split/</loc>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://inkspdf.com/watermark</loc>
+    <loc>https://inkspdf.com/watermark/</loc>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://inkspdf.com/terms</loc>
+    <loc>https://inkspdf.com/terms/</loc>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://inkspdf.com/privacy</loc>
+    <loc>https://inkspdf.com/privacy/</loc>
     <priority>0.3</priority>
   </url>
 </urlset>
